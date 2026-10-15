@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Namma Nivasa burgundy brand palette -->
+    <color name="burgundy_primary">#FF800020</color>
+    <color name="burgundy_deep">#FF57001B</color>
+    <color name="berry_accent">#FFA32952</color>
+    <color name="soft_rose">#FFF5E4EA</color>
+    <color name="pale_rose">#FFFBF1F4</color>
+    <color name="brand_background">#FFFAF8F7</color>
+    <color name="brand_surface">#FFFFFFFF</color>
+    <color name="brand_text_primary">#FF251D21</color>
+    <color name="brand_text_secondary">#FF786D72</color>
+    <color name="brand_border">#FFE9DFE2</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

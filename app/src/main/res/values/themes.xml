@@ -1,0 +1,25 @@
+<resources>
+
+    <style name="Theme.NammaNivasa" parent="Theme.MaterialComponents.Light">
+        <!--
+          Brand deep-burgundy window background so a cold launch shows Namma Nivasa
+          burgundy (matching the launcher icon) instead of a white flash, from the
+          very first frame — before the splash video draws and before Compose content
+          appears.
+        -->
+        <item name="android:windowBackground">@color/burgundy_deep</item>
+    </style>
+
+    <!--
+      Native (Android 12+) launch splash. The OS draws this for an instant on cold
+      start, before the app's first frame. It reuses the same deep burgundy as the
+      video splash and hides the icon so the launcher logo is not shown a second
+      time before R.raw.namma_nivasa_splash plays. On API < 31 the
+      windowSplashScreen* attributes are ignored and the inherited burgundy
+      windowBackground shows instead — still no logo either way.
+    -->
+    <style name="Theme.NammaNivasa.Splash" parent="Theme.NammaNivasa">
+        <item name="android:windowSplashScreenBackground">@color/burgundy_deep</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_transparent_icon</item>
+    </style>
+</resources>

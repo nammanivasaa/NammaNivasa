@@ -1,0 +1,5 @@
+/build
+
+# Firebase Android configuration downloaded from the Firebase console.
+# Contains the project's API key; keep it out of version control.
+google-services.json

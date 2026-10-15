@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Namma Nivasa launcher icon foreground layer.
+
+  The official white Namma Nivasa logo asset is placed unmodified on the
+  standard 108dp adaptive-icon canvas. The asset's inked artwork spans a
+  radius of only ~1.04x its half-width (measured), so the logo can be scaled
+  up well beyond the conservative bounding-box fit without the roof, the
+  integrated N, or any of the three sparkles being clipped by circular,
+  squircle, or rounded-square launcher masks.
+
+  The logo box is 66 x 50.46dp (aspect-preserving vs. the ~1.308:1 asset),
+  i.e. inset 21dp left/right and 28.77dp top/bottom. At that size the ink
+  reaches ~34dp radius, comfortably inside the 72dp visible circle (36dp
+  radius), so the mark fills the icon prominently while staying fully clear
+  of every mask shape.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:drawable="@drawable/namma_nivasa_logo_white"
+        android:left="21dp"
+        android:top="28.77dp"
+        android:right="21dp"
+        android:bottom="28.77dp" />
+</layer-list>
