@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
@@ -453,7 +455,7 @@ fun NnErrorState(
 fun NnTextField(
     value: String,
     onValueChange: (String) -> Unit,
-    label: String,
+    label: String? = null,
     placeholder: String = "",
     isError: Boolean = false,
     errorMessage: String? = null,
@@ -466,44 +468,69 @@ fun NnTextField(
     readOnly: Boolean = false,
     modifier: Modifier = Modifier.fillMaxWidth()
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label, fontFamily = InterFontFamily) },
-        placeholder = { Text(placeholder, fontFamily = InterFontFamily) },
-        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        leadingIcon = leadingIcon?.let {
-            { Icon(imageVector = it, contentDescription = null) }
-        },
-        trailingIcon = trailingIcon?.let {
-            {
-                IconButton(onClick = onTrailingIconClick ?: {}) {
-                    Icon(imageVector = it, contentDescription = null)
+    Column(modifier = modifier) {
+        if (!label.isNullOrBlank()) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontFamily = InterFontFamily,
+                color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.height(6.dp))
+        }
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = {
+                if (placeholder.isNotBlank()) {
+                    Text(placeholder, fontFamily = InterFontFamily, style = MaterialTheme.typography.bodyLarge)
                 }
-            }
-        },
-        isError = isError,
-        singleLine = singleLine,
-        visualTransformation = visualTransformation,
-        readOnly = readOnly,
-        shape = RoundedCornerShape(16.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-            focusedLabelColor = MaterialTheme.colorScheme.primary,
-            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            focusedLeadingIconColor = MaterialTheme.colorScheme.primary,
-            unfocusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            focusedTrailingIconColor = MaterialTheme.colorScheme.primary,
-            unfocusedTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            focusedContainerColor = Color(0xFFF5F0EE),
-            unfocusedContainerColor = Color(0xFFF5F0EE),
-            errorContainerColor = Color(0xFFF5F0EE)
-        ),
-        modifier = modifier
-            .fillMaxWidth()
-            .height(56.dp)
-    )
+            },
+            textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = InterFontFamily),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            leadingIcon = leadingIcon?.let {
+                { Icon(imageVector = it, contentDescription = null) }
+            },
+            trailingIcon = trailingIcon?.let {
+                {
+                    IconButton(onClick = onTrailingIconClick ?: {}) {
+                        Icon(imageVector = it, contentDescription = null)
+                    }
+                }
+            },
+            isError = isError,
+            singleLine = singleLine,
+            visualTransformation = visualTransformation,
+            readOnly = readOnly,
+            shape = RoundedCornerShape(16.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                focusedLeadingIconColor = MaterialTheme.colorScheme.primary,
+                unfocusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                focusedTrailingIconColor = MaterialTheme.colorScheme.primary,
+                unfocusedTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                focusedContainerColor = Color(0xFFF5F0EE),
+                unfocusedContainerColor = Color(0xFFF5F0EE),
+                errorContainerColor = Color(0xFFF5F0EE)
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (singleLine) Modifier.height(56.dp) else Modifier.heightIn(min = 56.dp)
+                )
+        )
+        if (isError && !errorMessage.isNullOrBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = errorMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                fontFamily = InterFontFamily
+            )
+        }
+    }
 }
 
 @Composable

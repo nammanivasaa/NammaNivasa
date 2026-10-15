@@ -1263,9 +1263,7 @@ private fun JoinCommunityFindScreen(
                             icon = Icons.Filled.Apartment,
                             title = "No Communities Found",
                             message = "We couldn't find any communities matching your search. " +
-                                "Your apartment community may not be registered with Namma Nivasa yet.",
-                            actionText = "Register Community",
-                            onActionClick = onRegisterCommunity
+                                "Your apartment community may not be registered with Namma Nivasa yet."
                         )
                     }
                 } else {
@@ -1330,9 +1328,13 @@ private fun JoinCommunityFindScreen(
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
-            FindCommunityHelpCard(onRegisterCommunity = onRegisterCommunity)
-            Spacer(Modifier.height(14.dp))
+            if (communities.isEmpty() && !isLoading && errorMessage.isNullOrBlank()) {
+                Spacer(Modifier.height(10.dp))
+                FindCommunityHelpCard(onRegisterCommunity = onRegisterCommunity)
+                Spacer(Modifier.height(14.dp))
+            } else {
+                Spacer(Modifier.height(14.dp))
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 NnSecondaryButton(
@@ -1360,8 +1362,7 @@ private fun CommunityOnboardingProgressIndicator(
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
             steps.forEachIndexed { index, _ ->
                 val stepNum = index + 1
@@ -1377,19 +1378,29 @@ private fun CommunityOnboardingProgressIndicator(
             }
         }
         Spacer(Modifier.height(6.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
             steps.forEachIndexed { index, label ->
                 val stepNum = index + 1
                 val active = stepNum == currentStep
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontSize = 11.sp,
-                    fontFamily = InterFontFamily,
-                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                    color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 11.sp,
+                        fontFamily = InterFontFamily,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
@@ -3112,8 +3123,7 @@ private fun CommunityRegistrationProgressIndicator(
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
             steps.forEachIndexed { index, _ ->
                 val stepNum = index + 1
@@ -3129,19 +3139,29 @@ private fun CommunityRegistrationProgressIndicator(
             }
         }
         Spacer(Modifier.height(6.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) {
             steps.forEachIndexed { index, label ->
                 val stepNum = index + 1
                 val active = stepNum == currentStep
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontSize = 10.sp,
-                    fontFamily = InterFontFamily,
-                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                    color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 10.sp,
+                        fontFamily = InterFontFamily,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }

@@ -64,6 +64,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.nammanivasa.R
+import com.example.nammanivasa.ui.theme.DmSans
+import com.example.nammanivasa.ui.theme.InterFontFamily
+import com.example.nammanivasa.ui.theme.PlayfairDisplay
 import com.example.nammanivasa.ui.theme.ShapeExtraSmall
 import com.example.nammanivasa.ui.theme.ShapeFull
 import com.example.nammanivasa.ui.theme.ShapeLarge
@@ -263,20 +266,6 @@ private fun CommunityHeadline() {
 
 private val OnboardingMargin = 24.dp
 
-/**
- * Screen 1 typography. Playfair Display (elegant serif) for the headline and
- * DM Sans for the description, bundled locally under res/font (SIL Open Font
- * License 1.1). Static TTFs are used so they are safe on API 24+.
- */
-private val PlayfairDisplay = FontFamily(
-    Font(R.font.playfair_display_regular, FontWeight.Normal),
-    Font(R.font.playfair_display_bold, FontWeight.Bold)
-)
-
-private val DmSans = FontFamily(
-    Font(R.font.dm_sans_regular, FontWeight.Normal)
-)
-
 /** Number of introductory pages: financial trust, Bubbly, community living. */
 private const val OnboardingPageCount = 3
 
@@ -376,7 +365,7 @@ fun WelcomeScreen(
                 shape = RoundedCornerShape(ShapeFull),
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             ) {
-                Text("Create Account", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text("Create Account", style = MaterialTheme.typography.labelLarge, fontFamily = InterFontFamily, fontWeight = FontWeight.Bold, fontSize = 17.sp)
             }
             Spacer(Modifier.height(12.dp))
             OutlinedButton(
@@ -385,7 +374,7 @@ fun WelcomeScreen(
                 shape = RoundedCornerShape(ShapeFull),
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             ) {
-                Text("Log In", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = MaterialTheme.colorScheme.primary)
+                Text("Log In", style = MaterialTheme.typography.labelLarge, fontFamily = InterFontFamily, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.height(10.dp))
             Text(
@@ -564,7 +553,7 @@ private fun OnboardingFooter(
                     shape = RoundedCornerShape(ShapeFull),
                     modifier = Modifier.weight(1f).heightIn(min = 52.dp)
                 ) {
-                    Text("Back", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    Text("Back", style = MaterialTheme.typography.labelLarge, fontFamily = InterFontFamily, fontWeight = FontWeight.Bold)
                 }
             }
             Button(
@@ -580,6 +569,7 @@ private fun OnboardingFooter(
                     Text(
                         if (page == 2) "Get Started" else "Next",
                         style = MaterialTheme.typography.labelLarge,
+                        fontFamily = InterFontFamily,
                         fontWeight = FontWeight.Bold,
                         fontSize = 17.sp,
                         maxLines = 1,
