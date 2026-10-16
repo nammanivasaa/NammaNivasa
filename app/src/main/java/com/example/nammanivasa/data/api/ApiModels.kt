@@ -244,3 +244,25 @@ data class CreateFinancialAccessGrantRequest(
 data class RevokeFinancialAccessGrantRequest(
     @Json(name = "reason") val reason: String? = null
 )
+
+// --- Community Registration ---
+@JsonClass(generateAdapter = true)
+data class CreateCommunityRequest(
+    @Json(name = "name") val name: String,
+    @Json(name = "societyType") val societyType: String? = null,
+    @Json(name = "state") val state: String,
+    @Json(name = "city") val city: String,
+    @Json(name = "area") val area: String,
+    @Json(name = "pinCode") val pinCode: String,
+    @Json(name = "streetAddress") val streetAddress: String,
+    @Json(name = "buildingName") val buildingName: String? = null,
+    @Json(name = "floors") val floors: Int? = null,
+    @Json(name = "flatNumber") val flatNumber: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CreatedCommunityResponse(
+    @Json(name = "communityId") val communityId: String,
+    @Json(name = "name") val name: String,
+    @Json(name = "slug") val slug: String
+)

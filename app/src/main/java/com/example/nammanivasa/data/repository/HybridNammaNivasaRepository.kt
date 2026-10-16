@@ -147,6 +147,9 @@ class HybridNammaNivasaRepository(
     override suspend fun revokeFinancialAccessGrant(grantId: String): Boolean =
         remote.revokeFinancialAccessGrant(grantId).orDemoWrite { local.revokeFinancialAccessGrant(grantId) }
 
+    override suspend fun createCommunity(request: RepoCreateCommunityRequest): CreatedCommunityResult? =
+        remote.createCommunity(request).orDemoWrite { local.createCommunity(request) }
+
     // --- Fallback plumbing ---------------------------------------------------
 
     /** Falls back to demo data on any read failure and latches the demo flag. */

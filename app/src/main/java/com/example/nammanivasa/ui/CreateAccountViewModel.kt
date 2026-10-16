@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.nammanivasa.data.api.AuthManager
 import com.google.firebase.auth.AuthResult
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,7 +30,10 @@ class CreateAccountViewModel : ViewModel() {
      * internals.
      */
     data class CreateAccountUiState(
-        val fullName: String = "",
+        val firstName: String = "",
+        val lastName: String = "",
+        val countryCode: String = "🇮🇳 +91",
+        val mobileNumber: String = "",
         val email: String = "",
         val password: String = "",
         val confirmPassword: String = "",
@@ -68,6 +72,8 @@ class CreateAccountViewModel : ViewModel() {
             return
         }
 
+        val firstName = _uiState.value.firstName.trim()
+        val lastName = _uiState.value.lastName.trim()
         val email = _uiState.value.email.trim()
         val password = _uiState.value.password
 
@@ -76,7 +82,12 @@ class CreateAccountViewModel : ViewModel() {
 
         viewModelScope.launch {
             val result = try {
-                registerWithEmailAndPassword(email, password)
+                val authResult = registerWithEmailAndPassword(email, password)
+                val profileUpdates = UserProfileChangeRequest.Builder()
+                    .setDisplayName("$firstName $lastName")
+                    .build()
+                auth.currentUser?.updateProfile(profileUpdates)?.await()
+                authResult
             } catch (t: Throwable) {
                 handleFirebaseError(t)
                 null
@@ -131,8 +142,20 @@ class CreateAccountViewModel : ViewModel() {
 
     // Field mutators. The screen never mutates the immutable UI state directly; a
     // fresh edit also clears stale validation errors so the submit button unlocks.
-    fun onFullNameChange(value: String) {
-        _uiState.value = _uiState.value.copy(fullName = value, errors = emptyList())
+    fun onFirstNameChange(value: String) {
+        _uiState.value = _uiState.value.copy(firstName = value, errors = emptyList())
+    }
+
+    fun onLastNameChange(value: String) {
+        _uiState.value = _uiState.value.copy(lastName = value, errors = emptyList())
+    }
+
+    fun onCountryCodeChange(value: String) {
+        _uiState.value = _uiState.value.copy(countryCode = value, errors = emptyList())
+    }
+
+    fun onMobileNumberChange(value: String) {
+        _uiState.value = _uiState.value.copy(mobileNumber = value, errors = emptyList())
     }
 
     fun onEmailChange(value: String) {
@@ -163,19 +186,31 @@ class CreateAccountViewModel : ViewModel() {
 
     private fun validate(): List<String> {
         val errors = mutableListOf<String>()
+        val firstName = _uiState.value.firstName.trim()
+        val lastName = _uiState.value.lastName.trim()
         val email = _uiState.value.email.trim()
         val password = _uiState.value.password
+        val mobile = _uiState.value.mobileNumber.trim()
 
+        if (firstName.isEmpty()) {
+            errors.add("First name is required.")
+        }
+        if (lastName.isEmpty()) {
+            errors.add("Last name is required.")
+        }
         if (email.isEmpty()) {
             errors.add("Email address is required.")
         } else if (!IS_EMAIL_ADDRESS.matcher(email).matches()) {
             errors.add("Enter a valid email address.")
         }
+        if (mobile.isNotEmpty() && mobile.length < 10) {
+            errors.add("Enter a valid mobile number.")
+        }
 
         if (password.isEmpty()) {
             errors.add("Password is required.")
-        } else if (password.length < 6) {
-            errors.add("Password must be at least 6 characters.")
+        } else if (password.length < 8) {
+            errors.add("Password must be at least 8 characters.")
         }
 
         val confirmPassword = _uiState.value.confirmPassword
@@ -229,7 +264,7 @@ class CreateAccountViewModel : ViewModel() {
                         )
                         return
                     }
-                    "ERROR_WEAK_PASSWORD" -> "Password is too weak. It must be at least 6 characters."
+                    "ERROR_WEAK_PASSWORD" -> "Password is too weak. It must be at least 8 characters."
                     "ERROR_INVALID_EMAIL" -> "The email address is not valid."
                     "ERROR_OPERATION_NOT_ALLOWED" -> "This sign-in method is not enabled."
                     else -> t.message ?: "Could not create the account."

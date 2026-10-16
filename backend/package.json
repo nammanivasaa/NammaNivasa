@@ -4,13 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "AUTH_MODE=test tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "test": "vitest run",
-    "migrate": "node-pg-migrate up --migrations-dir migrations"
+    "migrate": "node-pg-migrate up --migrations-dir migrations",
+    "seed": "tsx src/database/seed.ts"
   },
   "dependencies": {
+    "@types/compression": "^1.8.1",
+    "compression": "^1.8.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",

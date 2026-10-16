@@ -17,6 +17,7 @@ import com.example.nammanivasa.data.api.RevokeFinancialAccessGrantRequest
 import com.example.nammanivasa.data.api.VerifyPaymentRequest
 import com.example.nammanivasa.data.api.VisitorRequestResponse
 import com.example.nammanivasa.data.api.BillResponse
+import com.example.nammanivasa.data.api.CreateCommunityRequest
 import com.example.nammanivasa.data.model.BillItem
 import com.example.nammanivasa.data.model.CommunityInfo
 import com.example.nammanivasa.data.model.CommunityMembershipInfo
@@ -152,6 +153,39 @@ class RealNammaNivasaRepository(private val context: Context) : NammaNivasaRepos
                 }
             } catch (e: Exception) {
                 RepoResult.Failure(repoErrorFrom(e))
+            }
+        }
+    }
+
+    override suspend fun createCommunity(request: RepoCreateCommunityRequest): CreatedCommunityResult? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val apiReq = CreateCommunityRequest(
+                    name = request.name,
+                    societyType = request.societyType,
+                    state = request.state,
+                    city = request.city,
+                    area = request.area,
+                    pinCode = request.pinCode,
+                    streetAddress = request.streetAddress,
+                    buildingName = request.buildingName,
+                    floors = request.floors,
+                    flatNumber = request.flatNumber
+                )
+                val response = apiService.createCommunity(apiReq)
+                if (response.isSuccessful && response.body()?.data != null) {
+                    val data = response.body()!!.data!!
+                    setActiveCommunity(data.communityId)
+                    CreatedCommunityResult(
+                        communityId = data.communityId,
+                        name = data.name,
+                        slug = data.slug
+                    )
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                null
             }
         }
     }

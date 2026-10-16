@@ -1,3 +1,4 @@
+import compression from 'compression';
 import cors from 'cors';
 import express from 'express';
 import { pingDatabase } from './config/db.js';
@@ -7,6 +8,7 @@ import { apiRouter } from './modules/api.js';
 
 export const app = express();
 
+app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 app.disable('x-powered-by');

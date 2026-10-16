@@ -20,6 +20,7 @@ import com.example.nammanivasa.data.repository.FakeNammaNivasaRepository
 import com.example.nammanivasa.data.repository.HybridNammaNivasaRepository
 import com.example.nammanivasa.data.repository.NammaNivasaRepository
 import com.example.nammanivasa.data.repository.RealNammaNivasaRepository
+import com.example.nammanivasa.data.repository.RepoCreateCommunityRequest
 import com.example.nammanivasa.data.repository.RepoError
 import com.example.nammanivasa.data.repository.RepoResult
 import com.example.nammanivasa.data.repository.RepoCreateFinancialAccessGrantRequest
@@ -175,6 +176,48 @@ class SocietyViewModel(
             }
             repository.setActiveCommunity(communityId)
             loadCommunityData(communityId)
+        }
+    }
+
+    fun registerCommunity(
+        name: String,
+        societyType: String?,
+        state: String,
+        city: String,
+        area: String,
+        pinCode: String,
+        streetAddress: String,
+        buildingName: String? = null,
+        floors: Int? = null,
+        flatNumber: String? = null,
+        onSuccess: () -> Unit
+    ) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSubmitting = true, submitError = null)
+            val result = repository.createCommunity(
+                RepoCreateCommunityRequest(
+                    name = name,
+                    societyType = societyType,
+                    state = state,
+                    city = city,
+                    area = area,
+                    pinCode = pinCode,
+                    streetAddress = streetAddress,
+                    buildingName = buildingName,
+                    floors = floors,
+                    flatNumber = flatNumber
+                )
+            )
+            if (result != null) {
+                _uiState.value = _uiState.value.copy(isSubmitting = false)
+                selectCommunity(result.communityId)
+                onSuccess()
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    isSubmitting = false,
+                    submitError = "Failed to register community. Please try again."
+                )
+            }
         }
     }
 

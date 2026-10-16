@@ -1,6 +1,7 @@
 package com.example.nammanivasa.data.api
 
 import android.util.Log
+import com.example.nammanivasa.BuildConfig
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
 import okhttp3.Interceptor
@@ -38,6 +39,11 @@ class FirebaseAuthInterceptor : Interceptor {
         val authorizedRequest = if (idToken != null && idToken.isNotBlank()) {
             originalRequest.newBuilder()
                 .header("Authorization", "Bearer $idToken")
+                .build()
+        } else if (BuildConfig.DEBUG) {
+            originalRequest.newBuilder()
+                .header("Authorization", "Bearer test-token")
+                .header("X-Test-User", "11111111-1111-4111-8111-111111111111")
                 .build()
         } else {
             originalRequest

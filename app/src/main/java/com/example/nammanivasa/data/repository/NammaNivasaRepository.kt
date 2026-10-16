@@ -25,6 +25,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
+import java.util.UUID
 
 /**
  * Builds an ISO-8601 UTC timestamp for a moment [daysAhead] days from now at the
@@ -64,9 +65,29 @@ interface CommunityRepository {
      * discoverable list. Selecting a result grants no membership or access.
      */
     suspend fun discoverCommunities(query: String): RepoResult<List<CommunitySearchItem>>
+    suspend fun createCommunity(request: RepoCreateCommunityRequest): CreatedCommunityResult?
     suspend fun setActiveCommunity(communityId: String)
     suspend fun getActiveCommunityId(): String?
 }
+
+data class RepoCreateCommunityRequest(
+    val name: String,
+    val societyType: String? = null,
+    val state: String,
+    val city: String,
+    val area: String,
+    val pinCode: String,
+    val streetAddress: String,
+    val buildingName: String? = null,
+    val floors: Int? = null,
+    val flatNumber: String? = null
+)
+
+data class CreatedCommunityResult(
+    val communityId: String,
+    val name: String,
+    val slug: String
+)
 
 interface VisitorRepository {
     suspend fun visitors(): RepoResult<List<VisitorRequest>>
@@ -352,6 +373,17 @@ class FakeNammaNivasaRepository : NammaNivasaRepository {
         return RepoResult.Success(
             if (trimmed.isEmpty()) communities
             else communities.filter { it.name.contains(trimmed, ignoreCase = true) }
+        )
+    }
+
+    override suspend fun createCommunity(request: RepoCreateCommunityRequest): CreatedCommunityResult? {
+        val newId = UUID.randomUUID().toString()
+        val slug = request.name.lowercase().replace(Regex("[^a-z0-9]+"), "-") + "-" + request.pinCode
+        activeCommunityId = newId
+        return CreatedCommunityResult(
+            communityId = newId,
+            name = request.name,
+            slug = slug
         )
     }
 

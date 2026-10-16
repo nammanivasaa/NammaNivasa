@@ -5,7 +5,7 @@ import { env } from '../config/env.js';
 import { authenticate, type AuthorizedRequest } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { authorizeAction, canAccessCommunity, type AuthenticatedUser } from '../lib/authorization.js';
-import { getMembershipContext, listActiveUserCommunities, listUserMemberships, searchCommunities } from '../repositories/communityRepository.js';
+import { getMembershipContext, listActiveUserCommunities, listUserMemberships, searchCommunities, createCommunity } from '../repositories/communityRepository.js';
 import { createMaintenanceRequest, listMaintenanceRequestsForCommunity } from '../repositories/maintenanceRepository.js';
 import { createNotice, getNoticeById, listNoticesForCommunity, publishNotice } from '../repositories/noticesRepository.js';
 import { logAuditEvent } from '../repositories/auditRepository.js';
@@ -240,6 +240,38 @@ router.get('/api/v1/communities/discover', authenticate, async (req: AuthorizedR
         status: community.status
       }))
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const createCommunitySchema = z.object({
+  name: z.string().trim().min(1, 'Community name is required').max(255),
+  societyType: z.string().trim().max(100).optional(),
+  state: z.string().trim().min(1, 'State is required').max(100),
+  city: z.string().trim().min(1, 'City is required').max(100),
+  area: z.string().trim().min(1, 'Area is required').max(100),
+  pinCode: z.string().trim().min(1, 'PIN code is required').max(20),
+  streetAddress: z.string().trim().min(1, 'Street address is required'),
+  buildingName: z.string().trim().max(100).optional(),
+  floors: z.coerce.number().int().positive().optional(),
+  flatNumber: z.string().trim().max(50).optional()
+});
+
+router.post('/api/v1/communities', authenticate, async (req: AuthorizedRequest, res, next) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      throw new HttpError(401, 'UNAUTHENTICATED', 'Authentication required.');
+    }
+
+    const parsed = createCommunitySchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new HttpError(400, 'INVALID_INPUT', parsed.error.issues[0]?.message ?? 'Invalid community payload.');
+    }
+
+    const created = await createCommunity(user.id, parsed.data);
+    res.status(201).json({ data: created });
   } catch (error) {
     next(error);
   }

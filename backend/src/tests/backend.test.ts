@@ -8,6 +8,7 @@ const TEST_USER_ID = '11111111-1111-4111-8111-111111111111';
 const TEST_TENANT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const TEST_COMMUNITY_ID = '22222222-2222-4222-8222-222222222222';
 const UNAUTHORIZED_COMMUNITY_ID = '44444444-4444-4444-8444-444444444444';
+const TEST_VISITOR_ID = '33333333-3333-4333-8333-333333333333';
 
 const { app } = await import('../app.js');
 
@@ -31,9 +32,11 @@ async function ensureTestDatabaseFixtures(): Promise<void> {
     await client.query('DELETE FROM bills WHERE community_id = $1', [TEST_COMMUNITY_ID]);
     await client.query('DELETE FROM audit_logs WHERE community_id = $1', [TEST_COMMUNITY_ID]);
     await client.query('DELETE FROM file_refs WHERE community_id = $1', [TEST_COMMUNITY_ID]);
+    await client.query('DELETE FROM notifications WHERE community_id = $1', [TEST_COMMUNITY_ID]);
     await client.query('DELETE FROM community_role_assignments WHERE community_id = $1', [TEST_COMMUNITY_ID]);
     await client.query('DELETE FROM roles WHERE community_id = $1', [TEST_COMMUNITY_ID]);
     await client.query('DELETE FROM community_memberships WHERE community_id = $1', [TEST_COMMUNITY_ID]);
+    await client.query('DELETE FROM household_financial_access WHERE community_id = $1', [TEST_COMMUNITY_ID]);
     await client.query('DELETE FROM communities WHERE id = $1', [TEST_COMMUNITY_ID]);
     await client.query('DELETE FROM users WHERE id IN ($1, $2)', [TEST_USER_ID, TEST_TENANT_ID]);
 
@@ -74,38 +77,37 @@ async function ensureTestDatabaseFixtures(): Promise<void> {
     await client.query(
       `INSERT INTO roles (id, community_id, code, label, description, is_customizable)
        VALUES (gen_random_uuid(), $1, 'COMMUNITY_ADMINISTRATOR', 'Community Administrator', 'Manage notices', false),
-             (gen_random_uuid(), $1, 'TENANT', 'Tenant', 'Basic resident access', false)
+              (gen_random_uuid(), $1, 'TREASURER_FINANCE_MANAGER', 'Treasurer', 'Financial management', false),
+              (gen_random_uuid(), $1, 'OWNER', 'Owner', 'Property owner', false),
+              (gen_random_uuid(), $1, 'TENANT', 'Tenant', 'Basic resident access', false)
        ON CONFLICT (community_id, code) DO NOTHING`,
       [TEST_COMMUNITY_ID]
     );
 
-    const adminRoleResult = await client.query(
-      `SELECT id FROM roles WHERE community_id = $1 AND code = 'COMMUNITY_ADMINISTRATOR' LIMIT 1`,
-      [TEST_COMMUNITY_ID]
-    );
-    const tenantRoleResult = await client.query(
+    const roleCodesToAssign = ['COMMUNITY_ADMINISTRATOR', 'TREASURER_FINANCE_MANAGER', 'OWNER', 'TENANT'];
+    for (const code of roleCodesToAssign) {
+      const roleRes = await client.query<{ id: string }>(
+        `SELECT id FROM roles WHERE community_id = $1 AND code = $2 LIMIT 1`,
+        [TEST_COMMUNITY_ID, code]
+      );
+      if (roleRes.rows[0]) {
+        await client.query(
+          `INSERT INTO community_role_assignments (id, user_id, community_id, role_id, status, assigned_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', NOW())`,
+          [TEST_USER_ID, TEST_COMMUNITY_ID, roleRes.rows[0].id]
+        );
+      }
+    }
+
+    const tenantRoleResult = await client.query<{ id: string }>(
       `SELECT id FROM roles WHERE community_id = $1 AND code = 'TENANT' LIMIT 1`,
       [TEST_COMMUNITY_ID]
     );
-
-    if (adminRoleResult.rows[0]) {
-      await client.query(
-       `INSERT INTO community_role_assignments (id, user_id, community_id, role_id, status, assigned_at)
-        VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', NOW())`,
-       [TEST_USER_ID, TEST_COMMUNITY_ID, adminRoleResult.rows[0].id]
-      );
-    }
-
     if (tenantRoleResult.rows[0]) {
       await client.query(
-       `INSERT INTO community_role_assignments (id, user_id, community_id, role_id, status, assigned_at)
-        VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', NOW())`,
-       [TEST_USER_ID, TEST_COMMUNITY_ID, tenantRoleResult.rows[0].id]
-      );
-      await client.query(
-       `INSERT INTO community_role_assignments (id, user_id, community_id, role_id, status, assigned_at)
-        VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', NOW())`,
-       [TEST_TENANT_ID, TEST_COMMUNITY_ID, tenantRoleResult.rows[0].id]
+        `INSERT INTO community_role_assignments (id, user_id, community_id, role_id, status, assigned_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', NOW())`,
+        [TEST_TENANT_ID, TEST_COMMUNITY_ID, tenantRoleResult.rows[0].id]
       );
     }
 
@@ -125,6 +127,13 @@ async function ensureTestDatabaseFixtures(): Promise<void> {
         membership_status = EXCLUDED.membership_status,
         status_updated_at = NOW()`,
       [TEST_TENANT_ID, TEST_COMMUNITY_ID]
+    );
+
+    await client.query(
+      `INSERT INTO visitor_requests (id, community_id, host_user_id, visitor_name, purpose, expected_arrival, status, created_at, updated_at)
+       VALUES ($3, $1, $2, 'John Doe', 'Delivery', NOW(), 'PENDING', NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET status = 'PENDING'`,
+      [TEST_COMMUNITY_ID, TEST_USER_ID, TEST_VISITOR_ID]
     );
   } finally {
     await client.end();

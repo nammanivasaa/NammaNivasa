@@ -1,5 +1,6 @@
-import { query } from '../config/db.js';
+import { query, withTransaction } from '../config/db.js';
 import type { MembershipStatus } from '../lib/authorization.js';
+import { v4 as uuidv4 } from 'uuid';
 
 export type CommunityMembershipSummary = {
   communityId: string;
@@ -321,4 +322,97 @@ export async function updateMembershipStatus(
     membershipStatus: membership.membershipStatus,
     roles: membership.roles
   };
+}
+
+export async function createCommunity(
+  userId: string,
+  input: {
+    name: string;
+    societyType?: string;
+    state: string;
+    city: string;
+    area: string;
+    pinCode: string;
+    streetAddress: string;
+    buildingName?: string;
+    floors?: number;
+    flatNumber?: string;
+  }
+): Promise<{ communityId: string; name: string; slug: string }> {
+  return withTransaction(async (client) => {
+    const communityId = uuidv4();
+    const slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + input.pinCode;
+
+    // 1. Insert community
+    await client.query(
+      `INSERT INTO communities (id, name, slug, community_type, state, city, area, pin_code, street_address, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'ACTIVE', NOW(), NOW())`,
+      [
+        communityId,
+        input.name,
+        slug,
+        input.societyType ?? 'Apartment Complex',
+        input.state,
+        input.city,
+        input.area,
+        input.pinCode,
+        input.streetAddress
+      ]
+    );
+
+    // 2. Insert system roles
+    const roleCodes = [
+      'COMMUNITY_ADMINISTRATOR',
+      'TREASURER_FINANCE_MANAGER',
+      'OWNER',
+      'TENANT',
+      'SECURITY_GUARD'
+    ];
+    const roleIds: Record<string, string> = {};
+    for (const code of roleCodes) {
+      const roleRes = await client.query<{ id: string }>(
+        `INSERT INTO roles (id, community_id, code, label, description, is_system_role, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, TRUE, NOW())
+         RETURNING id`,
+        [communityId, code, code.replace(/_/g, ' '), `System role for ${code}`]
+      );
+      roleIds[code] = roleRes.rows[0].id;
+    }
+
+    // 3. Insert building
+    const buildingId = uuidv4();
+    await client.query(
+      `INSERT INTO buildings (id, community_id, name, block_code, floors, status)
+       VALUES ($1, $2, $3, $4, $5, 'ACTIVE')`,
+      [buildingId, communityId, input.buildingName ?? 'Tower A', 'A', input.floors ?? 10]
+    );
+
+    // 4. Insert flat
+    const flatId = uuidv4();
+    await client.query(
+      `INSERT INTO flats (id, community_id, building_id, flat_number, unit_type, status)
+       VALUES ($1, $2, $3, $4, 'APARTMENT', 'ACTIVE')`,
+      [flatId, communityId, buildingId, input.flatNumber ?? 'A-101']
+    );
+
+    // 5. Insert active membership for founding admin
+    await client.query(
+      `INSERT INTO community_memberships (id, user_id, community_id, membership_status, joined_at, status_updated_at)
+       VALUES (gen_random_uuid(), $1, $2, 'ACTIVE', NOW(), NOW())
+       ON CONFLICT (user_id, community_id) DO UPDATE SET membership_status = 'ACTIVE'`,
+      [userId, communityId]
+    );
+
+    // 6. Assign COMMUNITY_ADMINISTRATOR role
+    const adminRoleId = roleIds['COMMUNITY_ADMINISTRATOR'];
+    if (adminRoleId) {
+      await client.query(
+        `INSERT INTO community_role_assignments (id, user_id, community_id, role_id, status, assigned_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', NOW())`,
+        [userId, communityId, adminRoleId]
+      );
+    }
+
+    return { communityId, name: input.name, slug };
+  });
 }

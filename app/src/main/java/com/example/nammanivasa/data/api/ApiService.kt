@@ -35,6 +35,11 @@ interface ApiService {
         @Query("q") query: String
     ): Response<ApiResponse<List<CommunitySearchResult>>>
 
+    @POST("/api/v1/communities")
+    suspend fun createCommunity(
+        @Body request: CreateCommunityRequest
+    ): Response<ApiResponse<CreatedCommunityResponse>>
+
     @GET("/api/v1/communities/{communityId}")
     suspend fun getCommunity(
         @Path("communityId") communityId: String

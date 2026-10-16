@@ -1,6 +1,7 @@
 package com.example.nammanivasa.data.api
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import com.example.nammanivasa.BuildConfig
 import com.squareup.moshi.Moshi
@@ -13,10 +14,23 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
 
-    private const val DEFAULT_BASE_URL = "http://10.0.2.2:4000/"
     private const val CONNECT_TIMEOUT_SECONDS = 15L
     private const val READ_TIMEOUT_SECONDS = 30L
     private const val WRITE_TIMEOUT_SECONDS = 30L
+
+    private val baseUrl: String
+        get() {
+            val isEmulator = Build.FINGERPRINT.startsWith("generic") ||
+                    Build.MODEL.contains("google_sdk") ||
+                    Build.MODEL.contains("Emulator") ||
+                    Build.HARDWARE.contains("goldfish") ||
+                    Build.HARDWARE.contains("ranchu")
+            return if (isEmulator) {
+                "http://10.0.2.2:4000/"
+            } else {
+                "http://192.168.1.179:4000/"
+            }
+        }
 
     @Volatile
     private var INSTANCE: ApiService? = null
@@ -53,7 +67,7 @@ object ApiClient {
         .build()
 
     private val retrofit = Retrofit.Builder()
-        .baseUrl(DEFAULT_BASE_URL)
+        .baseUrl(baseUrl)
         .client(okHttpClient)
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build()

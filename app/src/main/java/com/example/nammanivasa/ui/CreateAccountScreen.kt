@@ -1,22 +1,28 @@
 package com.example.nammanivasa.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -24,6 +30,7 @@ import com.example.nammanivasa.R
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -37,8 +44,8 @@ import com.example.nammanivasa.ui.theme.Primary
 /**
  * Screen 5 — Create Account.
  *
- * Full Name, Email Address, Password, Confirm Password, password visibility
- * toggle, Terms of Service + Privacy Policy agreement, Create Account button,
+ * First Name, Last Name, Email Address, Country Code + Mobile Number, Password, Confirm Password,
+ * password visibility toggle, Terms of Service + Privacy Policy agreement, Create Account button,
  * Continue with Google, "Already have an account?" link, and back navigation.
  */
 @Composable
@@ -125,7 +132,10 @@ fun CreateAccountScreen(
                     .verticalScroll(rememberScrollState())
             ) {
                 CreateAccountForm(
-                    fullName = uiState.fullName,
+                    firstName = uiState.firstName,
+                    lastName = uiState.lastName,
+                    countryCode = uiState.countryCode,
+                    mobileNumber = uiState.mobileNumber,
                     email = uiState.email,
                     password = uiState.password,
                     confirmPassword = uiState.confirmPassword,
@@ -135,7 +145,10 @@ fun CreateAccountScreen(
                     errors = uiState.errors,
                     isSubmitting = uiState.isSubmitting,
                     submitError = uiState.submitError,
-                    onFullNameChange = viewModel::onFullNameChange,
+                    onFirstNameChange = viewModel::onFirstNameChange,
+                    onLastNameChange = viewModel::onLastNameChange,
+                    onCountryCodeChange = viewModel::onCountryCodeChange,
+                    onMobileNumberChange = viewModel::onMobileNumberChange,
                     onEmailChange = viewModel::onEmailChange,
                     onPasswordChange = viewModel::onPasswordChange,
                     onConfirmPasswordChange = viewModel::onConfirmPasswordChange,
@@ -176,12 +189,15 @@ fun CreateAccountScreen(
 }
 
 /**
- * The form layout for Screen 5: name, email, password, confirm password,
+ * The form layout for Screen 5: first name, last name, email, mobile number, password, confirm password,
  * visibility toggles, terms agreement, and both action buttons.
  */
 @Composable
 private fun CreateAccountForm(
-    fullName: String,
+    firstName: String,
+    lastName: String,
+    countryCode: String,
+    mobileNumber: String,
     email: String,
     password: String,
     confirmPassword: String,
@@ -190,7 +206,10 @@ private fun CreateAccountForm(
     isConfirmPasswordVisible: Boolean,
     errors: List<String>,
     isSubmitting: Boolean,
-    onFullNameChange: (String) -> Unit,
+    onFirstNameChange: (String) -> Unit,
+    onLastNameChange: (String) -> Unit,
+    onCountryCodeChange: (String) -> Unit,
+    onMobileNumberChange: (String) -> Unit,
     onEmailChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onConfirmPasswordChange: (String) -> Unit,
@@ -208,35 +227,78 @@ private fun CreateAccountForm(
             .padding(bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Full Name
-        NnTextField(
-            value = fullName,
-            onValueChange = onFullNameChange,
-            label = "Full Name",
-            placeholder = "e.g., Jane Doe",
-            leadingIcon = Icons.Filled.Person,
-            singleLine = true,
-            isError = errors.any { it.contains("Full Name", ignoreCase = true) }
-        )
+        // First Name & Last Name (Side by side)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                NnTextField(
+                    value = firstName,
+                    onValueChange = onFirstNameChange,
+                    label = "First Name",
+                    placeholder = "",
+                    leadingIcon = Icons.Filled.Person,
+                    singleLine = true,
+                    isError = errors.any { it.contains("First name", ignoreCase = true) }
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                NnTextField(
+                    value = lastName,
+                    onValueChange = onLastNameChange,
+                    label = "Last Name",
+                    placeholder = "",
+                    singleLine = true,
+                    isError = errors.any { it.contains("Last name", ignoreCase = true) }
+                )
+            }
+        }
 
         // Email Address
         NnTextField(
             value = email,
             onValueChange = onEmailChange,
             label = "Email Address",
-            placeholder = "e.g., jane@example.com",
+            placeholder = "",
             leadingIcon = Icons.Filled.Email,
             keyboardType = KeyboardType.Email,
             singleLine = true,
             isError = errors.any { it.contains("email", ignoreCase = true) }
         )
 
+        // Mobile Number with Country Code Dropdown
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.width(140.dp)) {
+                CountryCodeDropdown(
+                    selectedCode = countryCode,
+                    onCodeSelected = onCountryCodeChange
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                NnTextField(
+                    value = mobileNumber,
+                    onValueChange = onMobileNumberChange,
+                    label = "Mobile Number",
+                    placeholder = "",
+                    leadingIcon = Icons.Filled.Phone,
+                    keyboardType = KeyboardType.Phone,
+                    singleLine = true,
+                    isError = errors.any { it.contains("mobile number", ignoreCase = true) }
+                )
+            }
+        }
+
         // Password
         NnTextField(
             value = password,
             onValueChange = onPasswordChange,
             label = "Password",
-            placeholder = "At least 6 characters",
+            placeholder = "At least 8 characters",
             leadingIcon = Icons.Filled.Lock,
             trailingIcon = if (isPasswordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
             visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -313,5 +375,135 @@ private fun CreateAccountForm(
 
         // Error summary
         NnFormErrorSummary(errors = errors, submitError = submitError)
+    }
+}
+
+@Composable
+private fun CountryCodeDropdown(
+    selectedCode: String,
+    onCodeSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var sheetOpen by remember { mutableStateOf(false) }
+    val options = listOf(
+        "🇮🇳 +91",
+        "🇺🇸 +1",
+        "🇬🇧 +44",
+        "🇦🇪 +971",
+        "🇸🇬 +65",
+        "🇦🇺 +61",
+        "🇸🇦 +966",
+        "➕ Other"
+    )
+
+    Column(modifier = modifier) {
+        Text(
+            text = "Code",
+            style = MaterialTheme.typography.labelLarge,
+            fontFamily = InterFontFamily,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(6.dp))
+        OutlinedButton(
+            onClick = { sheetOpen = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = Color(0xFFF5F0EE),
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = selectedCode.ifBlank { "🇮🇳 +91" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = InterFontFamily,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = Primary)
+            }
+        }
+
+        if (sheetOpen) {
+            CountryCodeBottomSheet(
+                options = options,
+                selectedOption = selectedCode,
+                onSelected = {
+                    onCodeSelected(it)
+                    sheetOpen = false
+                },
+                onDismiss = { sheetOpen = false }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CountryCodeBottomSheet(
+    options: List<String>,
+    selectedOption: String,
+    onSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+                .navigationBarsPadding()
+        ) {
+            Text(
+                text = "Select Country Code",
+                style = MaterialTheme.typography.titleLarge,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = Primary
+            )
+            Spacer(Modifier.height(12.dp))
+            options.forEach { option ->
+                val isSelected = option == selectedOption
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelected(option) },
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSelected) Color(0xFFF5F0EE) else Color.Transparent
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = option,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontFamily = InterFontFamily,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) Primary else MaterialTheme.colorScheme.onSurface
+                        )
+                        if (isSelected) {
+                            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Primary)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
     }
 }

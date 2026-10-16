@@ -1,8 +1,19 @@
 package com.example.nammanivasa.ui
 
+import android.Manifest
 import android.app.Activity
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.location.LocationManager
+import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.example.nammanivasa.data.api.AuthManager
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -141,6 +152,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -190,6 +202,7 @@ import java.util.Locale
 import java.util.TimeZone
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 /** The four primary destinations shown in the bottom navigation bar. */
 private enum class AppTab(val label: String, val icon: ImageVector) {
@@ -214,8 +227,6 @@ private enum class LaunchStage {
     Splash,
     Onboarding,
     Welcome,
-    CheckUserStatus,
-    UserStatusError,
     CommunityOnboarding,
     PendingApproval,
     Main
@@ -520,17 +531,55 @@ fun NammaNivasaApp() {
     if (stage == LaunchStage.Splash) {
         BrandedSplashScreen()
         LaunchedEffect(Unit) {
-            // Brief branded display: long enough to feel intentional, short enough to
-            // avoid delaying real app usage.
-            delay(1_200)
-            stage = if (AuthManager.isLoggedIn() || FirebaseAuth.getInstance().currentUser != null) {
-                signedInEmail = FirebaseAuth.getInstance().currentUser?.email.orEmpty().ifBlank { "user@nammanivasa.com" }
-                LaunchStage.CheckUserStatus
+            val startTime = System.currentTimeMillis()
+            val nextStage = if (AuthManager.isLoggedIn() || FirebaseAuth.getInstance().currentUser != null) {
+                val user = FirebaseAuth.getInstance().currentUser
+                var isUserValid = true
+                if (user != null) {
+                    try {
+                        withTimeoutOrNull(5000L) {
+                            user.reload().await()
+                        }
+                    } catch (t: Throwable) {
+                        FirebaseAuth.getInstance().signOut()
+                        isUserValid = false
+                    }
+                }
+
+                if (!isUserValid || FirebaseAuth.getInstance().currentUser == null) {
+                    signedInEmail = ""
+                    Toast.makeText(context, "Your session has ended. Please sign in again.", Toast.LENGTH_LONG).show()
+                    LaunchStage.Welcome
+                } else {
+                    signedInEmail = user?.email.orEmpty().ifBlank { "user@nammanivasa.com" }
+                    val resolution = resolveUserCommunityStatus(context)
+                    if (resolution.error is RepoError.Unauthenticated) {
+                        FirebaseAuth.getInstance().signOut()
+                        signedInEmail = ""
+                        Toast.makeText(context, "Your session has ended. Please sign in again.", Toast.LENGTH_LONG).show()
+                        LaunchStage.Welcome
+                    } else {
+                        userStatusLookupError = resolution.error?.userMessage()
+                        when (resolution.status) {
+                            UserCommunityStatus.NoCommunity -> LaunchStage.CommunityOnboarding
+                            UserCommunityStatus.RequestPending -> LaunchStage.PendingApproval
+                            UserCommunityStatus.AlreadyMember -> LaunchStage.Main
+                            null -> LaunchStage.CommunityOnboarding
+                        }
+                    }
+                }
             } else if (!launchPrefs.getBoolean(OnboardingDoneKey, false)) {
                 LaunchStage.Onboarding
             } else {
                 LaunchStage.Welcome
             }
+
+            val elapsed = System.currentTimeMillis() - startTime
+            if (elapsed < 1_800) {
+                delay(1_800 - elapsed)
+            }
+            communityRoute = CommunityOnboardingRoute.JoinFind
+            stage = nextStage
         }
         return
     }
@@ -548,33 +597,7 @@ fun NammaNivasaApp() {
             onSignedIn = { email ->
                 signedInEmail = email
                 userStatusLookupError = null
-                stage = LaunchStage.CheckUserStatus
-            }
-        )
-        return
-    }
-    if (stage == LaunchStage.CheckUserStatus) {
-        LaunchedEffect(signedInEmail) {
-            val resolution = resolveUserCommunityStatus(context)
-            stage = when (resolution.status) {
-                UserCommunityStatus.NoCommunity -> LaunchStage.CommunityOnboarding
-                UserCommunityStatus.RequestPending -> LaunchStage.PendingApproval
-                UserCommunityStatus.AlreadyMember -> LaunchStage.Main
-                null -> LaunchStage.CommunityOnboarding
-            }
-            communityRoute = CommunityOnboardingRoute.JoinFind
-            userStatusLookupError = resolution.error?.userMessage()
-        }
-        NnLoadingState(message = "Checking your community status...")
-        return
-    }
-    if (stage == LaunchStage.UserStatusError) {
-        UserStatusLookupErrorScreen(
-            message = userStatusLookupError,
-            onRetry = { stage = LaunchStage.CheckUserStatus },
-            onBackToWelcome = {
-                signedInEmail = ""
-                stage = LaunchStage.Welcome
+                stage = LaunchStage.Splash
             }
         )
         return
@@ -582,15 +605,24 @@ fun NammaNivasaApp() {
     if (stage == LaunchStage.PendingApproval) {
         PendingApprovalScreen(
             userEmail = signedInEmail,
-            onRefreshStatus = { stage = LaunchStage.CheckUserStatus },
+            onRefreshStatus = { stage = LaunchStage.Splash },
             onBackToWelcome = { stage = LaunchStage.Welcome }
         )
         return
     }
+    val appContext = LocalContext.current.applicationContext
+    val viewModel: SocietyViewModel = viewModel(
+        factory = viewModelFactory {
+            initializer { SocietyViewModel.createDefault(appContext) }
+        }
+    )
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
     if (stage == LaunchStage.CommunityOnboarding) {
         CommunityOnboardingFlowScreen(
             route = communityRoute,
             statusWarning = userStatusLookupError,
+            viewModel = viewModel,
             onStartJoin = { communityRoute = CommunityOnboardingRoute.JoinFind },
             onStartCreate = { communityRoute = CommunityOnboardingRoute.CreateCommunity },
             onOpenJoinApartment = { communityRoute = CommunityOnboardingRoute.JoinApartment },
@@ -606,13 +638,6 @@ fun NammaNivasaApp() {
         )
         return
     }
-    val appContext = LocalContext.current.applicationContext
-    val viewModel: SocietyViewModel = viewModel(
-        factory = viewModelFactory {
-            initializer { SocietyViewModel.createDefault(appContext) }
-        }
-    )
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableStateOf(AppTab.Home) }
     var subScreen by remember { mutableStateOf(SubScreen.None) }
@@ -793,7 +818,14 @@ private suspend fun resolveUserCommunityStatus(context: android.content.Context)
         remote = RealNammaNivasaRepository(context.applicationContext),
         local = FakeNammaNivasaRepository()
     )
-    return when (val result = repository.getCommunities()) {
+    val result = try {
+        withTimeout(4000) {
+            repository.getCommunities()
+        }
+    } catch (e: Exception) {
+        FakeNammaNivasaRepository().getCommunities()
+    }
+    return when (result) {
         is RepoResult.Success -> {
             val memberships = result.data
             UserCommunityStatusResolution(
@@ -936,6 +968,7 @@ private fun PendingApprovalScreen(
 private fun CommunityOnboardingFlowScreen(
     route: CommunityOnboardingRoute,
     statusWarning: String?,
+    viewModel: SocietyViewModel,
     onStartJoin: () -> Unit,
     onStartCreate: () -> Unit,
     onOpenJoinApartment: () -> Unit,
@@ -960,15 +993,14 @@ private fun CommunityOnboardingFlowScreen(
     val findCommunitiesState by produceState(
         initialValue = FindCommunitiesUiState(),
         key1 = context.applicationContext,
-        key2 = communitiesReloadTrigger,
-        key3 = searchQuery
+        key2 = communitiesReloadTrigger
     ) {
         val repository = HybridNammaNivasaRepository(
             remote = RealNammaNivasaRepository(context.applicationContext),
             local = FakeNammaNivasaRepository()
         )
         value = FindCommunitiesUiState(isLoading = true)
-        when (val result = repository.discoverCommunities(query = searchQuery)) {
+        when (val result = repository.discoverCommunities("")) {
             is RepoResult.Success -> {
                 value = FindCommunitiesUiState(
                     isLoading = false,
@@ -998,7 +1030,7 @@ private fun CommunityOnboardingFlowScreen(
 
     val filteredCommunities = findCommunitiesState.communities.filter {
         val query = searchQuery.trim()
-        query.isBlank() || it.name.contains(query, ignoreCase = true)
+        query.isNotBlank() && it.name.contains(query, ignoreCase = true)
     }
     val selectedCommunity = filteredCommunities.find { it.communityId == selectedCommunityId }
 
@@ -1118,7 +1150,8 @@ private fun CommunityOnboardingFlowScreen(
 
         CommunityOnboardingRoute.CreateCommunity -> CreateCommunityStarterScreen(
             onBack = onStartJoin,
-            onCreated = onCommunityCreated
+            onCreated = onCommunityCreated,
+            viewModel = viewModel
         )
     }
 }
@@ -1232,25 +1265,19 @@ private fun JoinCommunityFindScreen(
             )
             Spacer(Modifier.height(12.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Nearby Communities", style = MaterialTheme.typography.titleMedium, fontFamily = InterFontFamily, fontWeight = FontWeight.Bold)
-                TextButton(onClick = onReload) {
-                    Icon(Icons.Filled.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Near you", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold, fontFamily = InterFontFamily)
+            if (query.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Search Results", style = MaterialTheme.typography.titleMedium, fontFamily = InterFontFamily, fontWeight = FontWeight.Bold)
                 }
+                Spacer(Modifier.height(8.dp))
             }
 
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (isLoading) {
-                    item {
-                        NnLoadingState(message = "Loading communities...")
-                    }
-                } else if (!errorMessage.isNullOrBlank()) {
+                if (!errorMessage.isNullOrBlank()) {
                     item {
                         NnInlineError(
                             message = errorMessage,
@@ -1259,12 +1286,21 @@ private fun JoinCommunityFindScreen(
                     }
                 } else if (communities.isEmpty()) {
                     item {
-                        NnEmptyState(
-                            icon = Icons.Filled.Apartment,
-                            title = "No Communities Found",
-                            message = "We couldn't find any communities matching your search. " +
-                                "Your apartment community may not be registered with Namma Nivasa yet."
-                        )
+                        if (query.isBlank()) {
+                            NnEmptyState(
+                                icon = Icons.Filled.Search,
+                                title = "Find Your Community",
+                                message = "Type your apartment or society name above to search."
+                            )
+                        } else {
+                            NnEmptyState(
+                                icon = Icons.Filled.Apartment,
+                                title = "No Communities Found",
+                                message = "We couldn't find any communities matching \"$query\".",
+                                actionText = "Can't find your community? Register",
+                                onActionClick = onRegisterCommunity
+                            )
+                        }
                     }
                 } else {
                     items(items = communities, key = { it.communityId }) { item ->
@@ -1328,13 +1364,7 @@ private fun JoinCommunityFindScreen(
                 }
             }
 
-            if (communities.isEmpty() && !isLoading && errorMessage.isNullOrBlank()) {
-                Spacer(Modifier.height(10.dp))
-                FindCommunityHelpCard(onRegisterCommunity = onRegisterCommunity)
-                Spacer(Modifier.height(14.dp))
-            } else {
-                Spacer(Modifier.height(14.dp))
-            }
+            Spacer(Modifier.height(14.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 NnSecondaryButton(
@@ -1433,61 +1463,7 @@ private fun ProgressNode(label: String, active: Boolean, current: Boolean) {
     }
 }
 
-@Composable
-private fun FindCommunityHelpCard(
-    onRegisterCommunity: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        onClick = onRegisterCommunity,
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Filled.Apartment, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Can’t find your community?",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontFamily = InterFontFamily,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "Tap here to register your apartment community.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = InterFontFamily,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = "Register Community",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-    }
-}
+
 
 @Composable
 private fun JoinCommunityApartmentScreen(
@@ -2125,12 +2101,30 @@ private val locationHierarchy: Map<String, Map<String, List<AreaPin>>> = mapOf(
     "Puducherry" to mapOf("Puducherry" to listOf(AreaPin("White Town", "605001"), AreaPin("Lawspet", "605008")))
 )
 
+private fun lookupPincode(pin: String): Triple<String, String, String>? {
+    val cleanPin = pin.trim()
+    if (cleanPin.length != 6) return null
+    for ((st, cities) in locationHierarchy) {
+        for ((ct, areas) in cities) {
+            for (ap in areas) {
+                if (ap.pinCode == cleanPin) {
+                    return Triple(st, ct, ap.area)
+                }
+            }
+        }
+    }
+    return null
+}
+
 @Composable
 private fun CreateCommunityStarterScreen(
     onBack: () -> Unit,
     onCreated: () -> Unit,
+    viewModel: SocietyViewModel? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     var currentStep by rememberSaveable { mutableStateOf(1) }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -2168,46 +2162,7 @@ private fun CreateCommunityStarterScreen(
     var builderFloors by rememberSaveable { mutableStateOf("") }
     var unitPositionStyle by rememberSaveable { mutableStateOf("") }
 
-    // Step 3: Flat & Unit Inventory state (deselected/disabled units)
-    var disabledUnits by rememberSaveable { mutableStateOf(setOf<String>()) }
-
-    // Step 4: Founding Admin Details & Flat Assignment
-    var adminFirstName by rememberSaveable { mutableStateOf("") }
-    var adminLastName by rememberSaveable { mutableStateOf("") }
-    val signedInEmail = remember {
-        FirebaseAuth.getInstance().currentUser?.email.orEmpty().ifBlank { "admin@nammanivasa.com" }
-    }
-    var adminMobile by rememberSaveable { mutableStateOf("") }
-    var adminRole by rememberSaveable { mutableStateOf("") }
-    var adminFlat by rememberSaveable { mutableStateOf("") }
-
-    val statesList = locationHierarchy.keys.toList()
-    val citiesMap: Map<String, List<AreaPin>> = if (state.isNotBlank()) locationHierarchy[state] ?: emptyMap() else emptyMap()
-    val citiesList: List<String> = if (state.isNotBlank()) citiesMap.keys.toList() + OTHER_CITY else emptyList()
-    val areaPins: List<AreaPin> = if (selectedCity.isNotBlank() && selectedCity != OTHER_CITY) (citiesMap[selectedCity] ?: emptyList()) else emptyList()
-    val areaNames: List<String> = if (selectedCity.isNotBlank()) {
-        if (selectedCity != OTHER_CITY) (areaPins.map { it.area } + OTHER_AREA) else listOf(OTHER_AREA)
-    } else emptyList()
-
-    val effectiveCity = if (selectedCity == OTHER_CITY) customCity else selectedCity
-    val effectiveArea = if (selectedArea == OTHER_AREA) customArea else selectedArea
-
-    val canNext1 = communityName.isNotBlank() &&
-            societyType.isNotBlank() &&
-            state.isNotBlank() &&
-            (selectedCity != OTHER_CITY && selectedCity.isNotBlank() || customCity.isNotBlank()) &&
-            (selectedArea != OTHER_AREA && selectedArea.isNotBlank() || customArea.isNotBlank()) &&
-            pinCode.isNotBlank() &&
-            streetAddress.isNotBlank()
-    val canNext2 = when (societyType) {
-        "Apartment Complex / Multi-Tower" -> blockNames.isNotBlank() && floorsPerTower.isNotBlank() && flatsPerFloor.isNotBlank() && numberingStyle.isNotBlank()
-        "Standalone / Single Apartment Building" -> standaloneFloors.isNotBlank() && flatsPerFloor.isNotBlank() && numberingStyle.isNotBlank()
-        "Gated Community / Villa Layout" -> phaseNames.isNotBlank() && totalVillaCount.isNotBlank()
-        "Builder Floor Society" -> builderBuildingNames.isNotBlank() && builderFloors.isNotBlank() && unitPositionStyle.isNotBlank()
-        else -> false
-    }
-
-    // Auto-generate flat inventory list based on society type and structure inputs
+    // Auto-generate flat inventory list under the hood
     val allGeneratedFlats = remember(
         societyType,
         blockNames,
@@ -2230,7 +2185,6 @@ private fun CreateCommunityStarterScreen(
                     val floors = floorsPerTower.toIntOrNull() ?: 0
                     val perFloor = flatsPerFloor.toIntOrNull() ?: 0
                     val isGroundNumeric = numberingStyle.contains("Ground", ignoreCase = true)
-
                     for (block in blocks) {
                         for (floor in 1..floors) {
                             for (unit in 1..perFloor) {
@@ -2251,7 +2205,6 @@ private fun CreateCommunityStarterScreen(
                     val perFloor = flatsPerFloor.toIntOrNull() ?: 0
                     val isGroundNumeric = numberingStyle.contains("Ground", ignoreCase = true)
                     val block = "Main Building"
-
                     for (floor in 1..floors) {
                         for (unit in 1..perFloor) {
                             val floorLabel = if (isGroundNumeric && floor == 1) "Ground Floor" else "Floor $floor"
@@ -2272,7 +2225,6 @@ private fun CreateCommunityStarterScreen(
                     val totalVillas = totalVillaCount.toIntOrNull() ?: 0
                     if (phases.isNotEmpty() && totalVillas > 0) {
                         val villasPerPhase = maxOf(1, totalVillas / phases.size)
-
                         var currentVilla = startNum
                         for (phase in phases) {
                             val countInPhase = minOf(villasPerPhase, totalVillas - (currentVilla - startNum))
@@ -2292,7 +2244,6 @@ private fun CreateCommunityStarterScreen(
                     val floors = builderFloors.toIntOrNull() ?: 0
                     val isFrontRear = unitPositionStyle.contains("Front", ignoreCase = true)
                     val isLeftRight = unitPositionStyle.contains("Left", ignoreCase = true)
-
                     for (building in buildings) {
                         for (floor in 1..floors) {
                             val positions = when {
@@ -2307,14 +2258,31 @@ private fun CreateCommunityStarterScreen(
                         }
                     }
                 }
-                else -> {
-                }
+                else -> {}
             }
         }
     }
 
-    val activeUnitCodes = remember(allGeneratedFlats, disabledUnits) {
-        allGeneratedFlats.map { it.third }.filter { it !in disabledUnits }
+    val activeUnitCodes = remember(allGeneratedFlats) {
+        allGeneratedFlats.map { it.third }
+    }
+
+    // Step 3: Founding Admin Details & Flat Assignment (Auto-filled from Auth)
+    val currentUser = remember { FirebaseAuth.getInstance().currentUser }
+    var adminFirstName by rememberSaveable { mutableStateOf("") }
+    var adminLastName by rememberSaveable { mutableStateOf("") }
+    var signedInEmail by rememberSaveable { mutableStateOf("") }
+    var adminMobile by rememberSaveable { mutableStateOf("") }
+    var adminRole by rememberSaveable { mutableStateOf("") }
+    var adminFlat by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(currentUser) {
+        val name = currentUser?.displayName.orEmpty().ifBlank { "Admin User" }
+        val parts = name.trim().split(" ").filter { it.isNotBlank() }
+        if (adminFirstName.isBlank()) adminFirstName = parts.firstOrNull() ?: "Admin"
+        if (adminLastName.isBlank()) adminLastName = if (parts.size > 1) parts.drop(1).joinToString(" ") else "User"
+        if (signedInEmail.isBlank()) signedInEmail = currentUser?.email.orEmpty().ifBlank { "admin@nammanivasa.com" }
+        if (adminMobile.isBlank()) adminMobile = currentUser?.phoneNumber.orEmpty().ifBlank { "9876543210" }
     }
 
     LaunchedEffect(activeUnitCodes) {
@@ -2323,14 +2291,50 @@ private fun CreateCommunityStarterScreen(
         }
     }
 
-    val canNext3 = activeUnitCodes.isNotEmpty()
-    val canNext4 = adminFirstName.isNotBlank() &&
+    val statesList = locationHierarchy.keys.toList()
+    val citiesMap: Map<String, List<AreaPin>> = if (state.isNotBlank()) locationHierarchy[state] ?: emptyMap() else emptyMap()
+    val citiesList: List<String> = if (state.isNotBlank()) citiesMap.keys.toList() + OTHER_CITY else emptyList()
+    val areaPins: List<AreaPin> = if (selectedCity.isNotBlank() && selectedCity != OTHER_CITY) (citiesMap[selectedCity] ?: emptyList()) else emptyList()
+    val areaNames: List<String> = if (selectedCity.isNotBlank()) {
+        if (selectedCity != OTHER_CITY) (areaPins.map { it.area } + OTHER_AREA) else listOf(OTHER_AREA)
+    } else emptyList()
+
+    var effectiveCity = if (selectedCity == OTHER_CITY) customCity else selectedCity
+    var effectiveArea = if (selectedArea == OTHER_AREA) customArea else selectedArea
+
+    LaunchedEffect(pinCode) {
+        val cleanPin = pinCode.trim()
+        if (cleanPin.length == 6) {
+            val detected = lookupPincode(cleanPin)
+            if (detected != null) {
+                state = detected.first
+                selectedCity = detected.second
+                selectedArea = detected.third
+            }
+        }
+    }
+
+    val canNext1 = communityName.isNotBlank() &&
+            societyType.isNotBlank() &&
+            state.isNotBlank() &&
+            (selectedCity != OTHER_CITY && selectedCity.isNotBlank() || customCity.isNotBlank()) &&
+            (selectedArea != OTHER_AREA && selectedArea.isNotBlank() || customArea.isNotBlank()) &&
+            pinCode.isNotBlank() &&
+            streetAddress.isNotBlank()
+    val canNext2 = when (societyType) {
+        "Apartment Complex / Multi-Tower" -> blockNames.isNotBlank() && floorsPerTower.isNotBlank() && flatsPerFloor.isNotBlank() && numberingStyle.isNotBlank()
+        "Standalone / Single Apartment Building" -> standaloneFloors.isNotBlank() && flatsPerFloor.isNotBlank() && numberingStyle.isNotBlank()
+        "Gated Community / Villa Layout" -> phaseNames.isNotBlank() && totalVillaCount.isNotBlank()
+        "Builder Floor Society" -> builderBuildingNames.isNotBlank() && builderFloors.isNotBlank() && unitPositionStyle.isNotBlank()
+        else -> false
+    }
+    val canNext3 = adminFirstName.isNotBlank() &&
             adminLastName.isNotBlank() &&
             adminMobile.isNotBlank() &&
             adminRole.isNotBlank() &&
             adminFlat.isNotBlank() &&
             adminFlat in activeUnitCodes
-    val canRegister = canNext1 && canNext2 && canNext3 && canNext4
+    val canRegister = canNext1 && canNext2 && canNext3
 
     Column(
         modifier = modifier
@@ -2364,14 +2368,14 @@ private fun CreateCommunityStarterScreen(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "Set up your society details, structure, inventory, and founding admin in 5 simple steps.",
+                text = "Set up your society details, structure, and founding admin in 4 simple steps.",
                 style = MaterialTheme.typography.bodyMedium,
                 fontFamily = InterFontFamily,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(20.dp))
 
-            // Step Indicator at Top (5 Steps)
+            // Step Indicator at Top (4 Steps)
             CommunityRegistrationProgressIndicator(currentStep = currentStep)
             Spacer(Modifier.height(24.dp))
 
@@ -2390,14 +2394,14 @@ private fun CreateCommunityStarterScreen(
                         value = communityName,
                         onValueChange = { communityName = it },
                         label = "Society / Community Name",
-                        placeholder = "e.g., Green Valley Apartments",
+                        placeholder = "",
                         singleLine = true
                     )
                     Spacer(Modifier.height(14.dp))
                     RoleDropdown(
                         title = "Society Type",
                         selectedLabel = societyType,
-                        placeholder = "Select Society Type...",
+                        placeholder = "Select...",
                         options = listOf(
                             "Apartment Complex / Multi-Tower",
                             "Standalone / Single Apartment Building",
@@ -2407,95 +2411,54 @@ private fun CreateCommunityStarterScreen(
                         onOptionSelected = { societyType = it }
                     )
                     Spacer(Modifier.height(14.dp))
-                    RoleDropdown(
-                        title = "State",
-                        selectedLabel = state,
-                        placeholder = "Select State...",
-                        options = statesList,
-                        searchable = true,
-                        onOptionSelected = { newState ->
-                            state = newState
-                            selectedCity = ""
-                            customCity = ""
-                            selectedArea = ""
-                            customArea = ""
-                            pinCode = ""
-                        }
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    RoleDropdown(
-                        title = "City",
-                        selectedLabel = selectedCity,
-                        placeholder = "Select City...",
-                        options = citiesList,
-                        searchable = true,
-                        onOptionSelected = { newCity ->
-                            selectedCity = newCity
-                            customCity = ""
-                            selectedArea = ""
-                            customArea = ""
-                            pinCode = ""
-                        }
-                    )
-                    if (selectedCity == OTHER_CITY) {
-                        Spacer(Modifier.height(14.dp))
-                        NnTextField(
-                            value = customCity,
-                            onValueChange = { customCity = it },
-                            label = "Custom City / Town",
-                            placeholder = "Type custom city or town name",
-                            singleLine = true
-                        )
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    RoleDropdown(
-                        title = "Area / Locality",
-                        selectedLabel = selectedArea,
-                        placeholder = "Select Area...",
-                        options = areaNames,
-                        searchable = true,
-                        onOptionSelected = { newArea ->
-                            selectedArea = newArea
-                            if (newArea == OTHER_AREA) {
-                                customArea = ""
-                                pinCode = ""
-                            } else {
-                                customArea = ""
-                                val matchingAreaPin = areaPins.find { it.area == newArea }
-                                if (matchingAreaPin != null) {
-                                    pinCode = matchingAreaPin.pinCode
-                                } else {
-                                    pinCode = ""
-                                }
-                            }
-                        }
-                    )
-                    if (selectedArea == OTHER_AREA) {
-                        Spacer(Modifier.height(14.dp))
-                        NnTextField(
-                            value = customArea,
-                            onValueChange = { customArea = it },
-                            label = "Custom Area / Locality",
-                            placeholder = "Type custom area name",
-                            singleLine = true
-                        )
-                    }
-                    Spacer(Modifier.height(14.dp))
                     NnTextField(
                         value = pinCode,
                         onValueChange = { pinCode = it },
-                        label = "PIN Code",
-                        placeholder = "e.g., 560102",
+                        label = "PIN Code (6 digits)",
+                        placeholder = "",
                         singleLine = true,
-                        keyboardType = KeyboardType.Number,
-                        readOnly = (selectedArea != OTHER_AREA && selectedCity != OTHER_CITY)
+                        keyboardType = KeyboardType.Number
                     )
+
+                    if (state.isNotBlank() && effectiveCity.isNotBlank() && effectiveArea.isNotBlank()) {
+                        Spacer(Modifier.height(12.dp))
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Column {
+                                    Text(
+                                        text = "Location Auto-Detected",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontFamily = InterFontFamily
+                                    )
+                                    Text(
+                                        text = "$effectiveArea, $effectiveCity, $state ($pinCode)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontFamily = InterFontFamily
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(Modifier.height(14.dp))
                     NnTextField(
                         value = streetAddress,
                         onValueChange = { streetAddress = it },
                         label = "Street Address / Landmark",
-                        placeholder = "Street name, door number, landmark",
+                        placeholder = "",
                         singleLine = false
                     )
                 }
@@ -2529,7 +2492,7 @@ private fun CreateCommunityStarterScreen(
                                 value = blockNames,
                                 onValueChange = { blockNames = it },
                                 label = "Tower / Block Names",
-                                placeholder = "e.g., Tower A, Tower B, Tower C",
+                                placeholder = "",
                                 singleLine = true
                             )
                             Spacer(Modifier.height(14.dp))
@@ -2539,7 +2502,7 @@ private fun CreateCommunityStarterScreen(
                                         value = floorsPerTower,
                                         onValueChange = { floorsPerTower = it },
                                         label = "Floors per Tower",
-                                        placeholder = "e.g., 12",
+                                        placeholder = "",
                                         singleLine = true,
                                         keyboardType = KeyboardType.Number
                                     )
@@ -2549,7 +2512,7 @@ private fun CreateCommunityStarterScreen(
                                         value = flatsPerFloor,
                                         onValueChange = { flatsPerFloor = it },
                                         label = "Flats per Floor",
-                                        placeholder = "e.g., 4",
+                                        placeholder = "",
                                         singleLine = true,
                                         keyboardType = KeyboardType.Number
                                     )
@@ -2559,7 +2522,7 @@ private fun CreateCommunityStarterScreen(
                             RoleDropdown(
                                 title = "Flat Numbering Style",
                                 selectedLabel = numberingStyle,
-                                placeholder = "Select Numbering Style...",
+                                placeholder = "Select...",
                                 options = listOf(
                                     "Standard (101, 102, 103...)",
                                     "Ground + Numeric (G01, G02, 101...)"
@@ -2574,7 +2537,7 @@ private fun CreateCommunityStarterScreen(
                                         value = standaloneFloors,
                                         onValueChange = { standaloneFloors = it },
                                         label = "Total Floors",
-                                        placeholder = "e.g., 5",
+                                        placeholder = "",
                                         singleLine = true,
                                         keyboardType = KeyboardType.Number
                                     )
@@ -2584,7 +2547,7 @@ private fun CreateCommunityStarterScreen(
                                         value = flatsPerFloor,
                                         onValueChange = { flatsPerFloor = it },
                                         label = "Flats per Floor",
-                                        placeholder = "e.g., 4",
+                                        placeholder = "",
                                         singleLine = true,
                                         keyboardType = KeyboardType.Number
                                     )
@@ -2594,7 +2557,7 @@ private fun CreateCommunityStarterScreen(
                             RoleDropdown(
                                 title = "Flat Numbering Style",
                                 selectedLabel = numberingStyle,
-                                placeholder = "Select Numbering Style...",
+                                placeholder = "Select...",
                                 options = listOf(
                                     "Standard (101, 102, 103...)",
                                     "Ground + Numeric (G01, G02, 101...)"
@@ -2607,7 +2570,7 @@ private fun CreateCommunityStarterScreen(
                                 value = phaseNames,
                                 onValueChange = { phaseNames = it },
                                 label = "Phase / Sector Names",
-                                placeholder = "e.g., Phase 1, Phase 2, Sector A",
+                                placeholder = "",
                                 singleLine = true
                             )
                             Spacer(Modifier.height(14.dp))
@@ -2617,7 +2580,7 @@ private fun CreateCommunityStarterScreen(
                                         value = villaPrefix,
                                         onValueChange = { villaPrefix = it },
                                         label = "Villa Prefix",
-                                        placeholder = "e.g., Villa",
+                                        placeholder = "",
                                         singleLine = true
                                     )
                                 }
@@ -2626,7 +2589,7 @@ private fun CreateCommunityStarterScreen(
                                         value = startingNumber,
                                         onValueChange = { startingNumber = it },
                                         label = "Starting Number",
-                                        placeholder = "e.g., 1",
+                                        placeholder = "",
                                         singleLine = true,
                                         keyboardType = KeyboardType.Number
                                     )
@@ -2637,7 +2600,7 @@ private fun CreateCommunityStarterScreen(
                                 value = totalVillaCount,
                                 onValueChange = { totalVillaCount = it },
                                 label = "Total Villa Count",
-                                placeholder = "e.g., 50",
+                                placeholder = "",
                                 singleLine = true,
                                 keyboardType = KeyboardType.Number
                             )
@@ -2647,7 +2610,7 @@ private fun CreateCommunityStarterScreen(
                                 value = builderBuildingNames,
                                 onValueChange = { builderBuildingNames = it },
                                 label = "Building / Plot Names",
-                                placeholder = "e.g., Plot 42, Plot 44, Plot 48",
+                                placeholder = "",
                                 singleLine = true
                             )
                             Spacer(Modifier.height(14.dp))
@@ -2655,7 +2618,7 @@ private fun CreateCommunityStarterScreen(
                                 value = builderFloors,
                                 onValueChange = { builderFloors = it },
                                 label = "Floors per Building",
-                                placeholder = "e.g., 4",
+                                placeholder = "",
                                 singleLine = true,
                                 keyboardType = KeyboardType.Number
                             )
@@ -2663,7 +2626,7 @@ private fun CreateCommunityStarterScreen(
                             RoleDropdown(
                                 title = "Unit Position Naming",
                                 selectedLabel = unitPositionStyle,
-                                placeholder = "Select Unit Position Style...",
+                                placeholder = "Select...",
                                 options = listOf(
                                     "Front / Rear (1F, 1R)",
                                     "Left / Right (1L, 1R)",
@@ -2673,210 +2636,35 @@ private fun CreateCommunityStarterScreen(
                             )
                         }
                     }
-                }
-                3 -> {
-                    // Step 3: Units
-                    Text(
-                        text = "3. Units",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontFamily = InterFontFamily,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Toggle checkboxes to include or exclude specific units (e.g. penthouse adjustments or missing flats).",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = InterFontFamily,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(16.dp))
 
-                    if (allGeneratedFlats.isEmpty()) {
-                        Card(
+                    if (activeUnitCodes.isNotEmpty()) {
+                        Spacer(Modifier.height(16.dp))
+                        Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F0EE)),
-                            shape = RoundedCornerShape(16.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(24.dp).fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                            Row(
+                                modifier = Modifier.padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
+                                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                 Text(
-                                    text = "No units generated yet.",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontFamily = InterFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    text = "Please complete the structure details in Step 2 to generate unit inventory.",
+                                    text = "Units will be automatically generated (${activeUnitCodes.size} units configured).",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    fontFamily = InterFontFamily,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    } else {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F0EE)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = communityName.ifBlank { "Green Valley Apartments" },
-                                            fontWeight = FontWeight.Bold,
-                                            fontFamily = InterFontFamily,
-                                            style = MaterialTheme.typography.titleSmall
-                                        )
-                                        Text(
-                                            text = societyType,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontFamily = InterFontFamily,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.primary,
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Text(
-                                            text = "${activeUnitCodes.size} Active Units",
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            fontFamily = InterFontFamily
-                                        )
-                                    }
-                                }
-                                Spacer(Modifier.height(8.dp))
-                                Text(
-                                    text = "Location: $effectiveArea, $effectiveCity ($state - $pinCode)",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = InterFontFamily,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(Modifier.height(12.dp))
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                Spacer(Modifier.height(12.dp))
-                                Text(
-                                    text = "Unit Selection Inventory:",
                                     fontWeight = FontWeight.SemiBold,
-                                    fontFamily = InterFontFamily,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontFamily = InterFontFamily
                                 )
-                                Spacer(Modifier.height(8.dp))
-
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(280.dp),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                    shape = RoundedCornerShape(16.dp),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .verticalScroll(rememberScrollState())
-                                            .padding(12.dp)
-                                    ) {
-                                        allGeneratedFlats.forEachIndexed { index, (block, floor, unit) ->
-                                            val isUnitActive = unit !in disabledUnits
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clickable {
-                                                        disabledUnits = if (isUnitActive) {
-                                                            disabledUnits + unit
-                                                        } else {
-                                                            disabledUnits - unit
-                                                        }
-                                                    }
-                                                    .padding(vertical = 4.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Row(
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Checkbox(
-                                                        checked = isUnitActive,
-                                                        onCheckedChange = { checked ->
-                                                            disabledUnits = if (checked) {
-                                                                disabledUnits - unit
-                                                            } else {
-                                                                disabledUnits + unit
-                                                            }
-                                                        },
-                                                        colors = CheckboxDefaults.colors(
-                                                            checkedColor = MaterialTheme.colorScheme.primary,
-                                                            uncheckedColor = MaterialTheme.colorScheme.outline
-                                                        )
-                                                    )
-                                                    Column {
-                                                        Text(
-                                                            text = unit,
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontFamily = InterFontFamily,
-                                                            color = if (isUnitActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                                        )
-                                                        Text(
-                                                            text = "$block • $floor",
-                                                            style = MaterialTheme.typography.bodySmall,
-                                                            fontSize = 11.sp,
-                                                            fontFamily = InterFontFamily,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        )
-                                                    }
-                                                }
-                                                Surface(
-                                                    color = if (isUnitActive) {
-                                                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
-                                                    } else {
-                                                        MaterialTheme.colorScheme.surfaceVariant
-                                                    },
-                                                    shape = RoundedCornerShape(8.dp)
-                                                ) {
-                                                    Text(
-                                                        text = if (isUnitActive) "Active" else "Excluded",
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        fontSize = 10.sp,
-                                                        color = if (isUnitActive) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        fontFamily = InterFontFamily
-                                                    )
-                                                }
-                                            }
-                                            if (index < allGeneratedFlats.size - 1) {
-                                                HorizontalDivider(
-                                                    modifier = Modifier.padding(vertical = 2.dp),
-                                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
                 }
-                4 -> {
-                    // Step 4: Founding Admin Details & Flat Assignment
+                3 -> {
+                    // Step 3: Founding Admin Details & Flat Assignment
                     Text(
-                        text = "4. Founding Admin Details & Flat Assignment",
+                        text = "3. Founding Admin Details & Flat Assignment",
                         style = MaterialTheme.typography.titleMedium,
                         fontFamily = InterFontFamily,
                         color = MaterialTheme.colorScheme.primary,
@@ -2884,7 +2672,7 @@ private fun CreateCommunityStarterScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "Provide founding admin details and select your assigned flat/villa from active inventory.",
+                        text = "Provide founding admin details and select your assigned flat/villa.",
                         style = MaterialTheme.typography.bodyMedium,
                         fontFamily = InterFontFamily,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2900,7 +2688,7 @@ private fun CreateCommunityStarterScreen(
                                 value = adminFirstName,
                                 onValueChange = { adminFirstName = it },
                                 label = "First Name",
-                                placeholder = "e.g., Rajesh",
+                                placeholder = "",
                                 singleLine = true
                             )
                         }
@@ -2909,7 +2697,7 @@ private fun CreateCommunityStarterScreen(
                                 value = adminLastName,
                                 onValueChange = { adminLastName = it },
                                 label = "Last Name",
-                                placeholder = "e.g., Sharma",
+                                placeholder = "",
                                 singleLine = true
                             )
                         }
@@ -2919,7 +2707,7 @@ private fun CreateCommunityStarterScreen(
                         value = signedInEmail,
                         onValueChange = {},
                         label = "Email ID",
-                        placeholder = "user@example.com",
+                        placeholder = "",
                         singleLine = true,
                         readOnly = true
                     )
@@ -2928,7 +2716,7 @@ private fun CreateCommunityStarterScreen(
                         value = adminMobile,
                         onValueChange = { adminMobile = it },
                         label = "Mobile Number",
-                        placeholder = "e.g., 9876543210",
+                        placeholder = "",
                         singleLine = true,
                         keyboardType = KeyboardType.Phone
                     )
@@ -2936,7 +2724,7 @@ private fun CreateCommunityStarterScreen(
                     RoleDropdown(
                         title = "Role in Society",
                         selectedLabel = adminRole,
-                        placeholder = "Select Role in Society...",
+                        placeholder = "Select...",
                         options = listOf(
                             "President",
                             "Vice-President",
@@ -2954,16 +2742,16 @@ private fun CreateCommunityStarterScreen(
                     RoleDropdown(
                         title = "Select Your Flat / Villa",
                         selectedLabel = adminFlat,
-                        placeholder = "Select Flat...",
-                        options = if (activeUnitCodes.isNotEmpty()) activeUnitCodes else listOf("No active units"),
+                        placeholder = "Select...",
+                        options = if (activeUnitCodes.isNotEmpty()) activeUnitCodes else listOf("Complete Step 2 first"),
                         searchable = true,
                         onOptionSelected = { adminFlat = it }
                     )
                 }
-                5 -> {
-                    // Step 5: Review & Confirm
+                4 -> {
+                    // Step 4: Review & Confirm
                     Text(
-                        text = "5. Review & Confirm",
+                        text = "4. Review & Confirm",
                         style = MaterialTheme.typography.titleMedium,
                         fontFamily = InterFontFamily,
                         color = MaterialTheme.colorScheme.primary,
@@ -3031,7 +2819,7 @@ private fun CreateCommunityStarterScreen(
                                 "Builder Floor Society" -> "$builderBuildingNames ($builderFloors floors)"
                                 else -> "Standard Structure"
                             })
-                            ReviewRow(label = "Active Flat Count", value = "${activeUnitCodes.size} Active Units")
+                            ReviewRow(label = "Total Units", value = "${activeUnitCodes.size} Units")
                         }
                     }
 
@@ -3079,7 +2867,7 @@ private fun CreateCommunityStarterScreen(
                     },
                     modifier = Modifier.weight(1f)
                 )
-                if (currentStep < 5) {
+                if (currentStep < 4) {
                     NnPrimaryButton(
                         text = "Next ➔",
                         onClick = {
@@ -3091,7 +2879,6 @@ private fun CreateCommunityStarterScreen(
                             1 -> canNext1
                             2 -> canNext2
                             3 -> canNext3
-                            4 -> canNext4
                             else -> true
                         },
                         modifier = Modifier.weight(1f)
@@ -3102,7 +2889,23 @@ private fun CreateCommunityStarterScreen(
                         onClick = {
                             focusManager.clearFocus()
                             keyboardController?.hide()
-                            onCreated()
+                            if (viewModel != null) {
+                                viewModel.registerCommunity(
+                                    name = communityName,
+                                    societyType = societyType,
+                                    state = state,
+                                    city = effectiveCity,
+                                    area = effectiveArea,
+                                    pinCode = pinCode,
+                                    streetAddress = streetAddress,
+                                    buildingName = adminFlat.ifBlank { null },
+                                    floors = floorsPerTower.toIntOrNull() ?: standaloneFloors.toIntOrNull() ?: builderFloors.toIntOrNull(),
+                                    flatNumber = adminFlat.ifBlank { null },
+                                    onSuccess = { onCreated() }
+                                )
+                            } else {
+                                onCreated()
+                            }
                         },
                         enabled = canRegister,
                         modifier = Modifier.weight(1f)
@@ -3119,7 +2922,7 @@ private fun CommunityRegistrationProgressIndicator(
     currentStep: Int,
     modifier: Modifier = Modifier
 ) {
-    val steps = listOf("1. Details", "2. Structure", "3. Units", "4. Admin", "5. Review")
+    val steps = listOf("1. Details", "2. Structure", "3. Admin", "4. Review")
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -3166,7 +2969,6 @@ private fun CommunityRegistrationProgressIndicator(
         }
     }
 }
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NnBottomSheetSelector(
