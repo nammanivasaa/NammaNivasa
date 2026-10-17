@@ -388,8 +388,8 @@ export async function createCommunity(
     const roleIds: Record<string, string> = {};
     for (const code of roleCodes) {
       const roleRes = await client.query<{ id: string }>(
-        `INSERT INTO roles (id, community_id, code, label, description, is_system_role, created_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, TRUE, NOW())
+        `INSERT INTO roles (id, community_id, code, label, description, is_customizable, created_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, FALSE, NOW())
          RETURNING id`,
         [communityId, code, code.replace(/_/g, ' '), `System role for ${code}`]
       );
