@@ -14,23 +14,12 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
 
-    private const val CONNECT_TIMEOUT_SECONDS = 15L
-    private const val READ_TIMEOUT_SECONDS = 30L
-    private const val WRITE_TIMEOUT_SECONDS = 30L
+    private const val CONNECT_TIMEOUT_SECONDS = 60L
+    private const val READ_TIMEOUT_SECONDS = 60L
+    private const val WRITE_TIMEOUT_SECONDS = 60L
 
     private val baseUrl: String
-        get() {
-            val isEmulator = Build.FINGERPRINT.startsWith("generic") ||
-                    Build.MODEL.contains("google_sdk") ||
-                    Build.MODEL.contains("Emulator") ||
-                    Build.HARDWARE.contains("goldfish") ||
-                    Build.HARDWARE.contains("ranchu")
-            return if (isEmulator) {
-                "http://10.0.2.2:4000/"
-            } else {
-                "http://192.168.1.179:4000/"
-            }
-        }
+        get() = "https://namma-nivasa-backend.onrender.com/"
 
     @Volatile
     private var INSTANCE: ApiService? = null

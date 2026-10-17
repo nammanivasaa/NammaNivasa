@@ -343,6 +343,14 @@ export async function createCommunity(
     const communityId = uuidv4();
     const slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + input.pinCode;
 
+    // 0. Ensure user exists in users table
+    await client.query(
+      `INSERT INTO users (id, firebase_uid, full_name, email, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 'ACTIVE', NOW(), NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      [userId, `firebase-${userId}`, 'Admin User', `${userId}@example.com`]
+    );
+
     // 1. Insert community
     await client.query(
       `INSERT INTO communities (id, name, slug, community_type, state, city, area, pin_code, street_address, status, created_at, updated_at)
