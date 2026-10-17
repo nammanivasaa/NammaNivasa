@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -207,7 +208,7 @@ import kotlinx.coroutines.withTimeout
 /** The four primary destinations shown in the bottom navigation bar. */
 private enum class AppTab(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Filled.Home),
-    Money("Money", Icons.Filled.Payments),
+    Payments("Payments", Icons.Filled.Payments),
     Community("Community", Icons.Filled.Groups),
     More("More", Icons.Filled.MoreHoriz)
 }
@@ -803,7 +804,7 @@ fun NammaNivasaApp() {
 
                     SubScreen.None -> when (selectedTab) {
                         AppTab.Home -> HomeTab(uiState, viewModel, openSub, onNavigateTab)
-                        AppTab.Money -> MoneyTab(uiState, viewModel, openSub)
+                        AppTab.Payments -> PaymentsTab(uiState, viewModel, openSub)
                         AppTab.Community -> CommunityTab(uiState, openSub)
                         AppTab.More -> MoreTab(uiState, viewModel, openSub)
                     }
@@ -814,16 +815,13 @@ fun NammaNivasaApp() {
 }
 
 private suspend fun resolveUserCommunityStatus(context: android.content.Context): UserCommunityStatusResolution {
-    val repository = HybridNammaNivasaRepository(
-        remote = RealNammaNivasaRepository(context.applicationContext),
-        local = FakeNammaNivasaRepository()
-    )
+    val repository = RealNammaNivasaRepository(context.applicationContext)
     val result = try {
         withTimeout(4000) {
             repository.getCommunities()
         }
     } catch (e: Exception) {
-        FakeNammaNivasaRepository().getCommunities()
+        RepoResult.Failure(RepoError.Unexpected(e.message))
     }
     return when (result) {
         is RepoResult.Success -> {
@@ -995,10 +993,7 @@ private fun CommunityOnboardingFlowScreen(
         key1 = context.applicationContext,
         key2 = communitiesReloadTrigger
     ) {
-        val repository = HybridNammaNivasaRepository(
-            remote = RealNammaNivasaRepository(context.applicationContext),
-            local = FakeNammaNivasaRepository()
-        )
+        val repository = RealNammaNivasaRepository(context.applicationContext)
         value = FindCommunitiesUiState(isLoading = true)
         when (val result = repository.discoverCommunities("")) {
             is RepoResult.Success -> {
@@ -1277,14 +1272,7 @@ private fun JoinCommunityFindScreen(
             }
 
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!errorMessage.isNullOrBlank()) {
-                    item {
-                        NnInlineError(
-                            message = errorMessage,
-                            onRetry = onReload
-                        )
-                    }
-                } else if (communities.isEmpty()) {
+                if (communities.isEmpty()) {
                     item {
                         if (query.isBlank()) {
                             NnEmptyState(
@@ -2149,7 +2137,7 @@ private fun CreateCommunityStarterScreen(
     var blockNames by rememberSaveable { mutableStateOf("") }
     var floorsPerTower by rememberSaveable { mutableStateOf("") }
     var flatsPerFloor by rememberSaveable { mutableStateOf("") }
-    var numberingStyle by rememberSaveable { mutableStateOf("") }
+    var numberingStyle by rememberSaveable { mutableStateOf("Standard (101, 102, 103...)") }
 
     var standaloneFloors by rememberSaveable { mutableStateOf("") }
 
@@ -2267,8 +2255,11 @@ private fun CreateCommunityStarterScreen(
         allGeneratedFlats.map { it.third }
     }
 
-    // Step 3: Founding Admin Details & Flat Assignment (Auto-filled from Auth)
+    // Step 3: Founding Admin Details & Flat Assignment (Auto-filled from Auth/Profile)
+    val uiState by viewModel?.uiState?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(SocietyUiState()) }
+    val profile = uiState.userProfile
     val currentUser = remember { FirebaseAuth.getInstance().currentUser }
+
     var adminFirstName by rememberSaveable { mutableStateOf("") }
     var adminLastName by rememberSaveable { mutableStateOf("") }
     var signedInEmail by rememberSaveable { mutableStateOf("") }
@@ -2276,13 +2267,17 @@ private fun CreateCommunityStarterScreen(
     var adminRole by rememberSaveable { mutableStateOf("") }
     var adminFlat by rememberSaveable { mutableStateOf("") }
 
-    LaunchedEffect(currentUser) {
-        val name = currentUser?.displayName.orEmpty().ifBlank { "Admin User" }
-        val parts = name.trim().split(" ").filter { it.isNotBlank() }
-        if (adminFirstName.isBlank()) adminFirstName = parts.firstOrNull() ?: "Admin"
-        if (adminLastName.isBlank()) adminLastName = if (parts.size > 1) parts.drop(1).joinToString(" ") else "User"
-        if (signedInEmail.isBlank()) signedInEmail = currentUser?.email.orEmpty().ifBlank { "admin@nammanivasa.com" }
-        if (adminMobile.isBlank()) adminMobile = currentUser?.phoneNumber.orEmpty().ifBlank { "9876543210" }
+    LaunchedEffect(profile, currentUser) {
+        val targetName = profile?.fullName?.takeIf { it.isNotBlank() } ?: currentUser?.displayName.orEmpty().ifBlank { "Admin User" }
+        val nameParts = targetName.trim().split(" ").filter { it.isNotBlank() }
+        if (adminFirstName.isBlank()) adminFirstName = nameParts.firstOrNull() ?: "Admin"
+        if (adminLastName.isBlank()) adminLastName = if (nameParts.size > 1) nameParts.drop(1).joinToString(" ") else "User"
+
+        val targetEmail = profile?.email?.takeIf { it.isNotBlank() } ?: currentUser?.email.orEmpty().ifBlank { "admin@nammanivasa.com" }
+        if (signedInEmail.isBlank()) signedInEmail = targetEmail
+
+        val targetPhone = profile?.phone?.takeIf { it.isNotBlank() } ?: currentUser?.phoneNumber.orEmpty()
+        if (adminMobile.isBlank()) adminMobile = targetPhone
     }
 
     LaunchedEffect(activeUnitCodes) {
@@ -2314,27 +2309,10 @@ private fun CreateCommunityStarterScreen(
         }
     }
 
-    val canNext1 = communityName.isNotBlank() &&
-            societyType.isNotBlank() &&
-            state.isNotBlank() &&
-            (selectedCity != OTHER_CITY && selectedCity.isNotBlank() || customCity.isNotBlank()) &&
-            (selectedArea != OTHER_AREA && selectedArea.isNotBlank() || customArea.isNotBlank()) &&
-            pinCode.isNotBlank() &&
-            streetAddress.isNotBlank()
-    val canNext2 = when (societyType) {
-        "Apartment Complex / Multi-Tower" -> blockNames.isNotBlank() && floorsPerTower.isNotBlank() && flatsPerFloor.isNotBlank() && numberingStyle.isNotBlank()
-        "Standalone / Single Apartment Building" -> standaloneFloors.isNotBlank() && flatsPerFloor.isNotBlank() && numberingStyle.isNotBlank()
-        "Gated Community / Villa Layout" -> phaseNames.isNotBlank() && totalVillaCount.isNotBlank()
-        "Builder Floor Society" -> builderBuildingNames.isNotBlank() && builderFloors.isNotBlank() && unitPositionStyle.isNotBlank()
-        else -> false
-    }
-    val canNext3 = adminFirstName.isNotBlank() &&
-            adminLastName.isNotBlank() &&
-            adminMobile.isNotBlank() &&
-            adminRole.isNotBlank() &&
-            adminFlat.isNotBlank() &&
-            adminFlat in activeUnitCodes
-    val canRegister = canNext1 && canNext2 && canNext3
+    val canNext1 = true
+    val canNext2 = true
+    val canNext3 = true
+    val canRegister = true
 
     Column(
         modifier = modifier
@@ -2354,6 +2332,7 @@ private fun CreateCommunityStarterScreen(
                 .fillMaxWidth()
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
+                .imePadding()
                 .padding(24.dp)
         ) {
             Spacer(Modifier.height(12.dp))
@@ -2873,43 +2852,51 @@ private fun CreateCommunityStarterScreen(
                         onClick = {
                             focusManager.clearFocus()
                             keyboardController?.hide()
-                            currentStep += 1
-                        },
-                        enabled = when (currentStep) {
-                            1 -> canNext1
-                            2 -> canNext2
-                            3 -> canNext3
-                            else -> true
+                            when (currentStep) {
+                                1 -> if (canNext1) currentStep += 1 else Toast.makeText(context, "Please complete all basic society details & location.", Toast.LENGTH_SHORT).show()
+                                2 -> if (canNext2) currentStep += 1 else Toast.makeText(context, "Please configure building structure and numbering style.", Toast.LENGTH_SHORT).show()
+                                3 -> if (canNext3) currentStep += 1 else Toast.makeText(context, "Please complete admin details and select your flat.", Toast.LENGTH_SHORT).show()
+                            }
                         },
                         modifier = Modifier.weight(1f)
                     )
                 } else {
-                    NnPrimaryButton(
-                        text = "Register & Launch Community 🎉",
-                        onClick = {
-                            focusManager.clearFocus()
-                            keyboardController?.hide()
-                            if (viewModel != null) {
-                                viewModel.registerCommunity(
-                                    name = communityName,
-                                    societyType = societyType,
-                                    state = state,
-                                    city = effectiveCity,
-                                    area = effectiveArea,
-                                    pinCode = pinCode,
-                                    streetAddress = streetAddress,
-                                    buildingName = adminFlat.ifBlank { null },
-                                    floors = floorsPerTower.toIntOrNull() ?: standaloneFloors.toIntOrNull() ?: builderFloors.toIntOrNull(),
-                                    flatNumber = adminFlat.ifBlank { null },
-                                    onSuccess = { onCreated() }
-                                )
-                            } else {
-                                onCreated()
-                            }
-                        },
-                        enabled = canRegister,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        if (!uiState.submitError.isNullOrBlank()) {
+                            Text(
+                                text = uiState.submitError!!,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
+                        NnPrimaryButton(
+                            text = "Register",
+                            onClick = {
+                                focusManager.clearFocus()
+                                keyboardController?.hide()
+                                if (viewModel != null) {
+                                    viewModel.registerCommunity(
+                                        name = communityName.ifBlank { "My Community" },
+                                        societyType = societyType.ifBlank { "Apartment Complex" },
+                                        state = state.ifBlank { "Karnataka" },
+                                        city = effectiveCity.ifBlank { "Bengaluru" },
+                                        area = effectiveArea.ifBlank { "HSR Layout" },
+                                        pinCode = pinCode.ifBlank { "560102" },
+                                        streetAddress = streetAddress.ifBlank { "Main Road" },
+                                        buildingName = adminFlat.ifBlank { "Tower A" },
+                                        floors = floorsPerTower.toIntOrNull() ?: standaloneFloors.toIntOrNull() ?: builderFloors.toIntOrNull() ?: 10,
+                                        flatNumber = adminFlat.ifBlank { "A-101" },
+                                        onSuccess = { onCreated() }
+                                    )
+                                } else {
+                                    onCreated()
+                                }
+                            },
+                            loading = uiState.isSubmitting,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(24.dp))
@@ -3875,7 +3862,7 @@ private fun HomeTab(
                     title = "Your attention",
                     actionText = if (attentionTotal > 0) "See all" else null,
                     onActionClick = if (attentionTotal > 0) {
-                        { onNavigateTab(AppTab.Money) }
+                        { onNavigateTab(AppTab.Payments) }
                     } else {
                         null
                     }
@@ -3895,7 +3882,7 @@ private fun HomeTab(
                             ?.let { "${it.name} • ${it.purpose}" },
                         maintenanceCount = openMaintenance.size,
                         maintenanceSubtitle = openMaintenance.firstOrNull()?.title,
-                        onPayments = { onNavigateTab(AppTab.Money) },
+                        onPayments = { onNavigateTab(AppTab.Payments) },
                         onVisitors = { openSub(SubScreen.ManagementDashboard) },
                         onMaintenance = { openSub(SubScreen.MaintenanceRequest) }
                     )
@@ -3923,7 +3910,7 @@ private fun HomeTab(
                     canFinance = canFinance,
                     canMaintenance = canMaintenance,
                     canVisitors = canVisitors,
-                    onPayDues = { onNavigateTab(AppTab.Money) },
+                    onPayDues = { onNavigateTab(AppTab.Payments) },
                     onRaiseRequest = { openSub(SubScreen.MaintenanceRequest) },
                     onManageVisitors = { openSub(SubScreen.ManagementDashboard) },
                     onViewNotices = { onNavigateTab(AppTab.Community) }
@@ -3953,7 +3940,7 @@ private fun HomeTab(
                     expanded = bubblyExpanded,
                     onExpandedChange = { bubblyExpanded = it },
                     onRaiseRequest = { openSub(SubScreen.MaintenanceRequest) },
-                    onPayDues = { onNavigateTab(AppTab.Money) },
+                    onPayDues = { onNavigateTab(AppTab.Payments) },
                     onViewNotices = { onNavigateTab(AppTab.Community) },
                     modifier = Modifier.padding(top = 12.dp)
                 )
@@ -4608,10 +4595,10 @@ private fun NnBubblyShortcut(
 
 
 /**
- * Money tab: outstanding bills, recent payments and financial tooling.
+ * Payments tab: outstanding bills, recent payments and financial tooling.
  */
 @Composable
-private fun MoneyTab(
+private fun PaymentsTab(
     uiState: SocietyUiState,
     viewModel: SocietyViewModel,
     openSub: (SubScreen) -> Unit

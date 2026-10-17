@@ -2,6 +2,7 @@ package com.example.nammanivasa.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import com.example.nammanivasa.data.api.ApiClient
 import com.example.nammanivasa.data.api.CreateFinancialAccessGrantRequest
 import com.example.nammanivasa.data.api.CreateMaintenanceRequestRequest
@@ -182,9 +183,11 @@ class RealNammaNivasaRepository(private val context: Context) : NammaNivasaRepos
                         slug = data.slug
                     )
                 } else {
+                    Log.e("RealRepo", "createCommunity failed: ${response.code()} ${response.errorBody()?.string()}")
                     null
                 }
             } catch (e: Exception) {
+                Log.e("RealRepo", "createCommunity exception", e)
                 null
             }
         }

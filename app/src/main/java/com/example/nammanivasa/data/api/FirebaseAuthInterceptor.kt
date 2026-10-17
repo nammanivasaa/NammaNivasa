@@ -35,15 +35,16 @@ class FirebaseAuthInterceptor : Interceptor {
             null
         }
 
-        // Add Authorization header if we have a token
-        val authorizedRequest = if (idToken != null && idToken.isNotBlank()) {
-            originalRequest.newBuilder()
-                .header("Authorization", "Bearer $idToken")
-                .build()
-        } else if (BuildConfig.DEBUG) {
+        // In debug builds targeting local backend in test mode, always attach test headers
+        // so PostgreSQL operations and backend endpoints succeed without token verification friction.
+        val authorizedRequest = if (BuildConfig.DEBUG) {
             originalRequest.newBuilder()
                 .header("Authorization", "Bearer test-token")
                 .header("X-Test-User", "11111111-1111-4111-8111-111111111111")
+                .build()
+        } else if (idToken != null && idToken.isNotBlank()) {
+            originalRequest.newBuilder()
+                .header("Authorization", "Bearer $idToken")
                 .build()
         } else {
             originalRequest

@@ -544,10 +544,7 @@ class SocietyViewModel(
         fun createDefault(context: android.content.Context): SocietyViewModel {
             val appContext = context.applicationContext
             return SocietyViewModel(
-                repository = HybridNammaNivasaRepository(
-                    remote = RealNammaNivasaRepository(appContext),
-                    local = FakeNammaNivasaRepository()
-                ),
+                repository = RealNammaNivasaRepository(appContext),
                 authReady = { AuthManager.ensureSignedIn() }
             )
         }
