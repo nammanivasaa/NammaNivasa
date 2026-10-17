@@ -5,7 +5,7 @@ import { env } from '../config/env.js';
 import { authenticate, type AuthorizedRequest } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { authorizeAction, canAccessCommunity, type AuthenticatedUser } from '../lib/authorization.js';
-import { getMembershipContext, listActiveUserCommunities, listUserMemberships, searchCommunities, createCommunity } from '../repositories/communityRepository.js';
+import { getMembershipContext, listActiveUserCommunities, listUserMemberships, searchCommunities, createCommunity, findCommunityById } from '../repositories/communityRepository.js';
 import { createMaintenanceRequest, listMaintenanceRequestsForCommunity } from '../repositories/maintenanceRepository.js';
 import { createNotice, getNoticeById, listNoticesForCommunity, publishNotice } from '../repositories/noticesRepository.js';
 import { logAuditEvent } from '../repositories/auditRepository.js';
@@ -277,22 +277,30 @@ router.post('/api/v1/communities', authenticate, async (req: AuthorizedRequest, 
   }
 });
 
-router.get('/api/v1/communities/:communityId', authenticate, (req: AuthorizedRequest, res) => {
-  const user = req.user;
-  const communityId = getParam(req.params.communityId);
-  if (!user) {
-    throw new HttpError(401, 'UNAUTHENTICATED', 'Authentication required.');
-  }
-  requireCommunityAccess(user, communityId);
-
-  res.json({
-    data: {
-      id: communityId,
-      name: 'Lakeview Residency',
-      status: 'ACTIVE',
-      members: Object.keys(user.communities).length
+router.get('/api/v1/communities/:communityId', authenticate, async (req: AuthorizedRequest, res, next) => {
+  try {
+    const user = req.user;
+    const communityId = getParam(req.params.communityId);
+    if (!user) {
+      throw new HttpError(401, 'UNAUTHENTICATED', 'Authentication required.');
     }
-  });
+
+    const community = await findCommunityById(communityId);
+    if (!community) {
+      throw new HttpError(404, 'NOT_FOUND', 'Community not found.');
+    }
+
+    res.json({
+      data: {
+        id: community.id,
+        name: community.name,
+        status: community.status,
+        members: 1
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.get('/api/v1/communities/:communityId/notices', authenticate, (req: AuthorizedRequest, res) => {

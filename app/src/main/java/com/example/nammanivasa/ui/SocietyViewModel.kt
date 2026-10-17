@@ -170,11 +170,16 @@ class SocietyViewModel(
                 error = null,
                 needsCommunitySelection = false
             )
-            when (val community = repository.getCommunity(communityId)) {
-                is RepoResult.Success -> _uiState.value = _uiState.value.copy(activeCommunity = community.data)
-                is RepoResult.Failure -> _uiState.value = _uiState.value.copy(error = community.error)
-            }
             repository.setActiveCommunity(communityId)
+            val userProfileResult = repository.getUserProfile()
+            val communitiesResult = repository.getCommunities()
+            val communityResult = repository.getCommunity(communityId)
+
+            _uiState.value = _uiState.value.copy(
+                userProfile = userProfileResult.dataOrNull ?: _uiState.value.userProfile,
+                communities = communitiesResult.dataOrNull ?: _uiState.value.communities,
+                activeCommunity = communityResult.dataOrNull ?: _uiState.value.activeCommunity
+            )
             loadCommunityData(communityId)
         }
     }
