@@ -343,13 +343,22 @@ export async function createCommunity(
     const communityId = uuidv4();
     const slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + input.pinCode;
 
-    // 0. Ensure user exists in users table
-    await client.query(
-      `INSERT INTO users (id, firebase_uid, full_name, email, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, 'ACTIVE', NOW(), NOW())
-       ON CONFLICT (id) DO NOTHING`,
-      [userId, `firebase-${userId}`, 'Admin User', `${userId}@example.com`]
+    // 0. Ensure user exists in users table (checking both id and firebase_uid)
+    let userRes = await client.query<{ id: string }>(
+      `SELECT id FROM users WHERE id = $1 OR firebase_uid = $2 LIMIT 1`,
+      [userId, `firebase-${userId}`]
     );
+
+    let effectiveUserId = userRes.rows[0]?.id;
+    if (!effectiveUserId) {
+      const newUser = await client.query<{ id: string }>(
+        `INSERT INTO users (id, firebase_uid, full_name, email, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, 'ACTIVE', NOW(), NOW())
+         RETURNING id`,
+        [userId, `firebase-${userId}`, 'Admin User', `${userId}@example.com`]
+      );
+      effectiveUserId = newUser.rows[0].id;
+    }
 
     // 1. Insert community
     await client.query(
@@ -408,7 +417,7 @@ export async function createCommunity(
       `INSERT INTO community_memberships (id, user_id, community_id, membership_status, joined_at, status_updated_at)
        VALUES (gen_random_uuid(), $1, $2, 'ACTIVE', NOW(), NOW())
        ON CONFLICT (user_id, community_id) DO UPDATE SET membership_status = 'ACTIVE'`,
-      [userId, communityId]
+      [effectiveUserId, communityId]
     );
 
     // 6. Assign COMMUNITY_ADMINISTRATOR role
@@ -417,7 +426,7 @@ export async function createCommunity(
       await client.query(
         `INSERT INTO community_role_assignments (id, user_id, community_id, role_id, status, assigned_at)
          VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', NOW())`,
-        [userId, communityId, adminRoleId]
+        [effectiveUserId, communityId, adminRoleId]
       );
     }
 
