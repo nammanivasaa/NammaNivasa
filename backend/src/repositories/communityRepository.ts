@@ -341,7 +341,8 @@ export async function createCommunity(
 ): Promise<{ communityId: string; name: string; slug: string }> {
   return withTransaction(async (client) => {
     const communityId = uuidv4();
-    const slug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + input.pinCode;
+    const baseSlug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + input.pinCode;
+    const slug = baseSlug + '-' + uuidv4().slice(0, 6);
 
     // 0. Ensure user exists in users table (checking both id and firebase_uid)
     let userRes = await client.query<{ id: string }>(
