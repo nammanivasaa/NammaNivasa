@@ -53,6 +53,7 @@ export interface AuthenticatedUser {
   id: string;
   firebaseUid: string;
   email?: string;
+  fullName?: string;
   communities: Record<string, UserMembershipSnapshot>;
 }
 
