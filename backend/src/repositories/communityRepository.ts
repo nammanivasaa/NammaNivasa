@@ -346,20 +346,19 @@ export async function createCommunity(
     const baseSlug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + input.pinCode;
     const slug = baseSlug + '-' + uuidv4().slice(0, 6);
 
-    // 0. Ensure user exists in users table with real email and name
+    // 0. Ensure user exists in users table with real email and name (UUID-safe)
     let userRes = await client.query<{ id: string }>(
-      `SELECT id FROM users WHERE id = $1 OR firebase_uid = $2 OR (email = $3 AND email IS NOT NULL AND email <> '') LIMIT 1`,
-      [userId, userId, input.adminEmail ?? `${userId}@example.com`]
+      `SELECT id FROM users WHERE firebase_uid = $1 OR (email = $2 AND email IS NOT NULL AND email <> '') LIMIT 1`,
+      [userId, input.adminEmail ?? `${userId}@example.com`]
     );
 
     let effectiveUserId = userRes.rows[0]?.id;
     if (!effectiveUserId) {
       const newUser = await client.query<{ id: string }>(
         `INSERT INTO users (id, firebase_uid, full_name, email, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, 'ACTIVE', NOW(), NOW())
+         VALUES (gen_random_uuid(), $1, $2, $3, 'ACTIVE', NOW(), NOW())
          RETURNING id`,
         [
-          userId,
           userId,
           input.adminName ?? 'Community Admin',
           input.adminEmail ?? `${userId}@example.com`
