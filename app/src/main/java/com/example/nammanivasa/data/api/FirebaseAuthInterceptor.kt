@@ -35,12 +35,18 @@ class FirebaseAuthInterceptor : Interceptor {
             null
         }
 
-        // In debug builds targeting local backend in test mode, always attach test headers
-        // so PostgreSQL operations and backend endpoints succeed without token verification friction.
+        val realUid = currentUser?.uid?.takeIf { it.isNotBlank() } ?: "11111111-1111-4111-8111-111111111111"
+        val realEmail = currentUser?.email.orEmpty().ifBlank { "suda.raghu@gmail.com" }
+        val realName = currentUser?.displayName.orEmpty().ifBlank {
+            realEmail.split("@").firstOrNull()?.replace(".", " ")?.replaceFirstChar { it.titlecase() } ?: "Raghu Suda"
+        }
+
         val authorizedRequest = if (BuildConfig.DEBUG) {
             originalRequest.newBuilder()
-                .header("Authorization", "Bearer test-token")
-                .header("X-Test-User", "11111111-1111-4111-8111-111111111111")
+                .header("Authorization", if (idToken != null && idToken.isNotBlank()) "Bearer $idToken" else "Bearer test-token")
+                .header("X-Test-User", realUid)
+                .header("X-User-Email", realEmail)
+                .header("X-User-Name", realName)
                 .build()
         } else if (idToken != null && idToken.isNotBlank()) {
             originalRequest.newBuilder()

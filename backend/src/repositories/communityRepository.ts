@@ -337,6 +337,8 @@ export async function createCommunity(
     buildingName?: string;
     floors?: number;
     flatNumber?: string;
+    adminName?: string;
+    adminEmail?: string;
   }
 ): Promise<{ communityId: string; name: string; slug: string }> {
   return withTransaction(async (client) => {
@@ -344,10 +346,10 @@ export async function createCommunity(
     const baseSlug = input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + input.pinCode;
     const slug = baseSlug + '-' + uuidv4().slice(0, 6);
 
-    // 0. Ensure user exists in users table (checking both id and firebase_uid)
+    // 0. Ensure user exists in users table with real email and name
     let userRes = await client.query<{ id: string }>(
-      `SELECT id FROM users WHERE id = $1 OR firebase_uid = $2 LIMIT 1`,
-      [userId, `firebase-${userId}`]
+      `SELECT id FROM users WHERE id = $1 OR firebase_uid = $2 OR (email = $3 AND email IS NOT NULL AND email <> '') LIMIT 1`,
+      [userId, userId, input.adminEmail ?? `${userId}@example.com`]
     );
 
     let effectiveUserId = userRes.rows[0]?.id;
@@ -356,7 +358,12 @@ export async function createCommunity(
         `INSERT INTO users (id, firebase_uid, full_name, email, status, created_at, updated_at)
          VALUES ($1, $2, $3, $4, 'ACTIVE', NOW(), NOW())
          RETURNING id`,
-        [userId, `firebase-${userId}`, 'Admin User', `${userId}@example.com`]
+        [
+          userId,
+          userId,
+          input.adminName ?? 'Community Admin',
+          input.adminEmail ?? `${userId}@example.com`
+        ]
       );
       effectiveUserId = newUser.rows[0].id;
     }

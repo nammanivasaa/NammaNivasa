@@ -255,7 +255,9 @@ const createCommunitySchema = z.object({
   streetAddress: z.string().trim().min(1, 'Street address is required'),
   buildingName: z.string().trim().max(100).optional(),
   floors: z.coerce.number().int().positive().optional(),
-  flatNumber: z.string().trim().max(50).optional()
+  flatNumber: z.string().trim().max(50).optional(),
+  adminName: z.string().trim().max(255).optional(),
+  adminEmail: z.string().trim().max(255).optional()
 });
 
 router.post('/api/v1/communities', authenticate, async (req: AuthorizedRequest, res, next) => {
@@ -270,7 +272,13 @@ router.post('/api/v1/communities', authenticate, async (req: AuthorizedRequest, 
       throw new HttpError(400, 'INVALID_INPUT', parsed.error.issues[0]?.message ?? 'Invalid community payload.');
     }
 
-    const created = await createCommunity(user.id, parsed.data);
+    const payload = {
+      ...parsed.data,
+      adminName: parsed.data.adminName ?? user.fullName ?? 'Admin User',
+      adminEmail: parsed.data.adminEmail ?? user.email ?? `${user.id}@example.com`
+    };
+
+    const created = await createCommunity(user.id, payload);
     res.status(201).json({ data: created });
   } catch (error) {
     next(error);

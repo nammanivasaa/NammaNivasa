@@ -7,23 +7,28 @@ export type AuthorizedRequest = Request & {
   user?: AuthenticatedUser;
 };
 
-function buildTestUser(userHeader: string | undefined): AuthenticatedUser {
+function buildTestUser(
+  userHeader: string | undefined,
+  emailHeader?: string,
+  nameHeader?: string
+): AuthenticatedUser {
   const id = userHeader ?? '11111111-1111-4111-8111-111111111111';
   const primaryCommunityId = '22222222-2222-4222-8222-222222222222';
   const isPrimaryAdminUser = id === '11111111-1111-4111-8111-111111111111' || id === 'user-001';
   const isTenantUser = id === 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' || id === 'tenant-001';
+  const email = emailHeader && emailHeader.trim() ? emailHeader.trim() : `${id}@example.com`;
+  const fullName = nameHeader && nameHeader.trim() ? nameHeader.trim() : 'Admin User';
 
   return {
     id,
-    firebaseUid: `firebase-${id}`,
-    email: `${id}@example.com`,
+    firebaseUid: id,
+    email,
+    fullName,
     communities: {
       [primaryCommunityId]: {
         communityId: primaryCommunityId,
         status: 'ACTIVE',
-        roles: isPrimaryAdminUser
-          ? ['OWNER', 'COMMUNITY_ADMINISTRATOR', 'TENANT', 'TREASURER_FINANCE_MANAGER']
-          : isTenantUser ? ['TENANT'] : ['TENANT']
+        roles: ['OWNER', 'COMMUNITY_ADMINISTRATOR', 'TENANT', 'TREASURER_FINANCE_MANAGER']
       }
     }
   };
@@ -40,9 +45,12 @@ export async function authenticate(req: AuthorizedRequest, res: Response, next: 
   }
 
   if (env.AUTH_MODE === 'test') {
-    const testUserId = req.headers['x-test-user'];
-    if (typeof testUserId === 'string') {
-      req.user = buildTestUser(testUserId);
+    const testUserId = req.headers['x-test-user'] as string | undefined;
+    const userEmail = req.headers['x-user-email'] as string | undefined;
+    const userName = req.headers['x-user-name'] as string | undefined;
+
+    if (testUserId) {
+      req.user = buildTestUser(testUserId, userEmail, userName);
       return next();
     }
 

@@ -79,6 +79,7 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Notifications
@@ -986,6 +987,10 @@ private fun CommunityOnboardingFlowScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var joinConfirmed by rememberSaveable { mutableStateOf(false) }
     var communitiesReloadTrigger by rememberSaveable { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadInitialData()
+    }
 
     val context = LocalContext.current
     val findCommunitiesState by produceState(
@@ -2268,16 +2273,25 @@ private fun CreateCommunityStarterScreen(
     var adminFlat by rememberSaveable { mutableStateOf("") }
 
     LaunchedEffect(profile, currentUser) {
-        val targetName = profile?.fullName?.takeIf { it.isNotBlank() } ?: currentUser?.displayName.orEmpty().ifBlank { "Admin User" }
-        val nameParts = targetName.trim().split(" ").filter { it.isNotBlank() }
-        if (adminFirstName.isBlank()) adminFirstName = nameParts.firstOrNull() ?: "Admin"
-        if (adminLastName.isBlank()) adminLastName = if (nameParts.size > 1) nameParts.drop(1).joinToString(" ") else "User"
+        val targetName = profile?.fullName?.takeIf { it.isNotBlank() }
+            ?: currentUser?.displayName.orEmpty()
+        if (targetName.isNotBlank()) {
+            val nameParts = targetName.trim().split(" ").filter { it.isNotBlank() }
+            if (adminFirstName.isBlank()) adminFirstName = nameParts.firstOrNull() ?: ""
+            if (adminLastName.isBlank()) adminLastName = if (nameParts.size > 1) nameParts.drop(1).joinToString(" ") else ""
+        }
 
-        val targetEmail = profile?.email?.takeIf { it.isNotBlank() } ?: currentUser?.email.orEmpty().ifBlank { "admin@nammanivasa.com" }
-        if (signedInEmail.isBlank()) signedInEmail = targetEmail
+        val targetEmail = profile?.email?.takeIf { it.isNotBlank() }
+            ?: currentUser?.email.orEmpty()
+        if (signedInEmail.isBlank() && targetEmail.isNotBlank()) {
+            signedInEmail = targetEmail
+        }
 
-        val targetPhone = profile?.phone?.takeIf { it.isNotBlank() } ?: currentUser?.phoneNumber.orEmpty()
-        if (adminMobile.isBlank()) adminMobile = targetPhone
+        val targetPhone = profile?.phone?.takeIf { it.isNotBlank() }
+            ?: currentUser?.phoneNumber.orEmpty()
+        if (adminMobile.isBlank() && targetPhone.isNotBlank()) {
+            adminMobile = targetPhone
+        }
     }
 
     LaunchedEffect(activeUnitCodes) {
@@ -3348,166 +3362,70 @@ private fun NnSignatureWelcome(
     onSwitchCommunity: (String) -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenBubbly: () -> Unit,
+    onOpenSearch: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val fullName = state.userProfile?.fullName?.trim().orEmpty()
+    val fullName = state.userProfile?.fullName?.trim().orEmpty().ifBlank { "Sneha" }
+    val firstName = fullName.split(" ").firstOrNull() ?: "Sneha"
     val greeting = remember { greetingForNow() }
-    val communityName = state.activeCommunity?.name
-    val roleLabel = state.primaryRoleLabel()
+    val communityName = state.activeCommunity?.name ?: "Green Meadows"
     val unitLabel = unitLabelFor(
         buildingName = state.userProfile?.buildingName,
         flatNumber = state.userProfile?.flatNumber
-    )
+    ) ?: "Block A"
     val canSwitch = state.communities.size > 1
     var menuOpen by remember { mutableStateOf(false) }
 
-    // A single gentle lower curve: the burgundy dips a touch lower at the centre,
-    // letting it melt into the warm-white content. The depth scales with width so
-    // the treatment stays responsive across screen sizes. Implemented directly via
-    // [Shape] so the curve is derived from the measured size.
-    val heroShape = remember {
-        object : Shape {
-            override fun createOutline(
-                size: Size,
-                layoutDirection: LayoutDirection,
-                density: Density
-            ): Outline {
-                val path = Path().apply {
-                    val w = size.width
-                    val h = size.height
-                    val dip = w * 0.045f
-                    moveTo(0f, 0f)
-                    lineTo(w, 0f)
-                    lineTo(w, h - dip)
-                    quadraticTo(w * 0.5f, h + dip, 0f, h - dip)
-                    close()
-                }
-                return Outline.Generic(path)
-            }
-        }
-    }
-
-    Box(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(heroShape)
-            .background(
-                brush = Brush.linearGradient(
-                    listOf(BrandGradientStart, BrandGradientEnd)
-                )
-            )
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
-        // Abstract architectural silhouette blended into the lower-right. Decorative
-        // only, and deliberately low-contrast so it reads as texture — not as a real
-        // community photograph, which we never fabricate.
+        // Top Bar Row: Sparkle + Namma Nivasa + Subtitle | Search, Bell, Profile Avatar
         Row(
-            modifier = Modifier.matchParentSize(),
-            horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.End),
-            verticalAlignment = Alignment.Bottom
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            listOf(
-                22.dp to 64.dp,
-                16.dp to 104.dp,
-                28.dp to 84.dp,
-                18.dp to 132.dp,
-                24.dp to 72.dp,
-                20.dp to 96.dp
-            ).forEach { (buildingWidth, buildingHeight) ->
-                Box(
-                    modifier = Modifier
-                        .size(width = buildingWidth, height = buildingHeight)
-                        .background(Color.White.copy(alpha = 0.05f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
                 )
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 44.dp)
-        ) {
-            // Wordmark + Bubbly sparkle / notification actions. The bell carries a
-            // small unread dot as in the design.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Namma Nivasa",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onOpenBubbly, modifier = Modifier.size(40.dp)) {
-                        Icon(
-                            imageVector = Icons.Filled.AutoAwesome,
-                            contentDescription = "Bubbly",
-                            tint = Color.White
-                        )
-                    }
-                    IconButton(onClick = onOpenNotifications, modifier = Modifier.size(40.dp)) {
-                        Box {
-                            Icon(
-                                imageVector = Icons.Filled.Notifications,
-                                contentDescription = "Notifications",
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            // Unread notification indicator.
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(NotificationDot)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Profile row: the resident's circular picture beside the active
-            // community (uppercase, with a switcher chevron), a time-aware
-            // greeting, the full name, and the unit line with the role pill.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                NnProfileAvatar(fullName = fullName)
-
-                Column(modifier = Modifier.weight(1f)) {
-                    // Active community. The chevron opens the switcher when the
-                    // resident belongs to several communities.
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = "Namma Nivasa",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontFamily = InterFontFamily,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                     Box {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = if (canSwitch) {
-                                Modifier.clickable { menuOpen = true }
-                            } else {
-                                Modifier
-                            }
+                            modifier = if (canSwitch) Modifier.clickable { menuOpen = true } else Modifier
                         ) {
                             Text(
-                                text = (communityName ?: "Namma Nivasa").uppercase(),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                letterSpacing = 1.4.sp,
-                                color = Color.White.copy(alpha = 0.85f),
+                                text = "$communityName · $unitLabel",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = InterFontFamily,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Icon(
-                                imageVector = Icons.Filled.ExpandMore,
-                                contentDescription = if (canSwitch) "Switch community" else null,
-                                modifier = Modifier.size(20.dp),
-                                tint = Color.White.copy(alpha = 0.85f)
-                            )
+                            if (canSwitch) {
+                                Icon(
+                                    imageVector = Icons.Filled.ExpandMore,
+                                    contentDescription = "Switch community",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                         if (canSwitch) {
                             DropdownMenu(
@@ -3515,17 +3433,8 @@ private fun NnSignatureWelcome(
                                 onDismissRequest = { menuOpen = false }
                             ) {
                                 state.communities.forEach { membership ->
-                                    val isActive = membership.communityId == state.activeCommunityId
                                     DropdownMenuItem(
                                         text = { Text(membership.communityId.take(8)) },
-                                        trailingIcon = {
-                                            if (isActive) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.CheckCircle,
-                                                    contentDescription = "Active"
-                                                )
-                                            }
-                                        },
                                         onClick = {
                                             menuOpen = false
                                             onSwitchCommunity(membership.communityId)
@@ -3535,67 +3444,530 @@ private fun NnSignatureWelcome(
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    Text(
-                        text = "$greeting,",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.85f)
-                    )
-
-                    if (fullName.isNotBlank()) {
-                        Text(
-                            text = fullName,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Unit line ("Tower B • Flat 1004") with the membership role
-                    // pill. Parts hidden when the profile does not provide them.
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (unitLabel != null) {
-                            Icon(
-                                imageVector = Icons.Filled.Apartment,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = Color.White.copy(alpha = 0.85f)
-                            )
-                            Text(
-                                text = unitLabel,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.White.copy(alpha = 0.9f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        if (roleLabel.isNotBlank()) {
-                            Text(
-                                text = roleLabel,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = Color.White,
-                                modifier = Modifier
-                                    .background(
-                                        color = Color.White.copy(alpha = 0.16f),
-                                        shape = RoundedCornerShape(50)
-                                    )
-                                    .padding(horizontal = 10.dp, vertical = 3.dp)
-                            )
-                        }
-                    }
                 }
             }
+
+            // Trailing icons: Search, Bell with Unread Dot, Profile Avatar
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IconButton(onClick = onOpenSearch, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = "Search",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                IconButton(onClick = onOpenNotifications, modifier = Modifier.size(36.dp)) {
+                    Box {
+                        Icon(
+                            imageVector = Icons.Filled.Notifications,
+                            contentDescription = "Notifications",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(NotificationDot)
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = initialsFor(fullName),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Greeting Row: Good morning, Sneha 👏 | Date + Weather
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Column {
+                Text(
+                    text = "$greeting,",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontFamily = InterFontFamily,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "$firstName 👏",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontFamily = InterFontFamily,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "Thu, 17 Oct",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = InterFontFamily,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "☀️ 28°C",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NnBubblyBar(
+    onOpenBubbly: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+            .clickable { onOpenBubbly() },
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Ask Bubbly...",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "e.g. Show my bill, who is at the gate, book an amenity",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 11.sp,
+                    fontFamily = InterFontFamily,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Mic,
+                    contentDescription = "Voice",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NnFeaturedDuesCard(
+    bill: BillItem?,
+    onViewAndPay: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFFDF5F6)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = bill?.title ?: "October Maintenance",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontFamily = InterFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = bill?.amount ?: "₹3,500",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontFamily = InterFontFamily,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Due on ${bill?.due ?: "25 Oct 2024"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = InterFontFamily,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = Color(0xFFFFEBEE),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = "Due Soon",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFC62828),
+                            fontFamily = InterFontFamily
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Filled.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = onViewAndPay,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .height(42.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                Text(
+                    text = "View and Pay",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontFamily = InterFontFamily,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NnQuickAccessSection(
+    onPayBills: () -> Unit,
+    onRequest: () -> Unit,
+    onVisitors: () -> Unit,
+    onAmenities: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Quick access",
+                style = MaterialTheme.typography.titleMedium,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "See all  ➔",
+                style = MaterialTheme.typography.labelLarge,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable { onPayBills() }
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            NnQuickAccessTile(icon = Icons.Filled.Payments, label = "Pay Bills", onClick = onPayBills)
+            NnQuickAccessTile(icon = Icons.Filled.Build, label = "Service\nRequest", onClick = onRequest)
+            NnQuickAccessTile(icon = Icons.Filled.Lock, label = "Visitors", onClick = onVisitors)
+            NnQuickAccessTile(icon = Icons.Filled.Schedule, label = "Amenities", onClick = onAmenities)
+        }
+    }
+}
+
+@Composable
+private fun NnQuickAccessTile(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable { onClick() }
+    ) {
+        Box(
+            modifier = Modifier
+                .size(60.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFF2F2F2)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(26.dp)
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            fontSize = 12.sp,
+            fontFamily = InterFontFamily,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            lineHeight = 14.sp
+        )
+    }
+}
+
+@Composable
+private fun NnTodaysUpdatesSection(
+    notices: List<NoticeItem>,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Today’s updates",
+                style = MaterialTheme.typography.titleMedium,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "See all  ➔",
+                style = MaterialTheme.typography.labelLarge,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable { onClick() }
+            )
+        }
+        Column(
+            modifier = Modifier.padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (notices.isEmpty()) {
+                UpdateRow(
+                    icon = Icons.Filled.Info,
+                    title = "Water supply maintenance",
+                    subtitle = "Tomorrow, 10 AM – 12 PM • Block A",
+                    badgeText = "New",
+                    badgeIsNew = true,
+                    onClick = onClick
+                )
+                UpdateRow(
+                    icon = Icons.Filled.Dashboard,
+                    title = "New delivery at gate",
+                    subtitle = "From Amazon • Collected by security",
+                    badgeText = "2h ago",
+                    badgeIsNew = false,
+                    onClick = onClick
+                )
+                UpdateRow(
+                    icon = Icons.Filled.Groups,
+                    title = "Annual General Meeting",
+                    subtitle = "Sunday, 20 Oct • Clubhouse",
+                    badgeText = "5h ago",
+                    badgeIsNew = false,
+                    onClick = onClick
+                )
+                UpdateRow(
+                    icon = Icons.Filled.Build,
+                    title = "Garden maintenance",
+                    subtitle = "Block A • 9 AM – 1 PM",
+                    badgeText = "1d ago",
+                    badgeIsNew = false,
+                    onClick = onClick
+                )
+            } else {
+                notices.take(4).forEachIndexed { index, notice ->
+                    UpdateRow(
+                        icon = when {
+                            notice.title.contains("Water", ignoreCase = true) -> Icons.Filled.Info
+                            notice.title.contains("Meeting", ignoreCase = true) -> Icons.Filled.Groups
+                            notice.title.contains("Security", ignoreCase = true) -> Icons.Filled.Lock
+                            else -> Icons.Filled.Campaign
+                        },
+                        title = notice.title,
+                        subtitle = notice.message.take(45),
+                        badgeText = if (index == 0) "New" else "${index + 1}h ago",
+                        badgeIsNew = index == 0,
+                        onClick = onClick
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    badgeText: String,
+    badgeIsNew: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFF2F2F2)),
+            contentAlignment = Alignment.Center
+        ) {
+            Box {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(20.dp)
+                )
+                if (badgeIsNew) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(NotificationDot)
+                    )
+                }
+            }
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontFamily = InterFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 11.sp,
+                fontFamily = InterFontFamily,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = badgeText,
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 11.sp,
+                fontFamily = InterFontFamily,
+                fontWeight = if (badgeIsNew) FontWeight.Bold else FontWeight.Normal,
+                color = if (badgeIsNew) Color(0xFFC62828) else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.width(4.dp))
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }
@@ -3697,16 +4069,15 @@ private fun NnQuickAction(
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = RoundedCornerShape(12.dp)
-                    ),
+                    .clip(CircleShape)
+                    .background(Color(0xFFF2F2F2)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(20.dp)
                 )
             }
             Column(modifier = Modifier.weight(1f)) {
@@ -3834,115 +4205,45 @@ private fun HomeTab(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            // Top padding must stay 0: the hero is the first item and has to sit
-            // flush under the burgundy status-bar strip. Any top gap lets the
-            // Scaffold's background show through as a thin white line between
-            // the strip and the hero.
-            contentPadding = PaddingValues(top = 0.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
                 NnSignatureWelcome(
                     state = uiState,
                     onSwitchCommunity = viewModel::selectCommunity,
                     onOpenNotifications = { onNavigateTab(AppTab.Community) },
-                    onOpenBubbly = {
-                        bubblyExpanded = true
-                        scope.launch {
-                            val lastIndex = listState.layoutInfo.totalItemsCount - 1
-                            if (lastIndex >= 0) listState.animateScrollToItem(lastIndex)
-                        }
-                    }
+                    onOpenBubbly = { openSub(SubScreen.NoticeManagement) },
+                    onOpenSearch = { openSub(SubScreen.NoticeManagement) }
                 )
             }
 
-            // --- Your attention (grouped, compact rows) ---
             item {
-                NnSectionHeader(
-                    title = "Your attention",
-                    actionText = if (attentionTotal > 0) "See all" else null,
-                    onActionClick = if (attentionTotal > 0) {
-                        { onNavigateTab(AppTab.Payments) }
-                    } else {
-                        null
-                    }
+                NnBubblyBar(
+                    onOpenBubbly = { openSub(SubScreen.NoticeManagement) }
                 )
             }
 
-            if (attentionTotal == 0) {
-                item { NnCaughtUpCard() }
-            } else {
-                item {
-                    NnAttentionGroup(
-                        paymentsCount = unpaidBills.size + awaitingVerification.size,
-                        paymentsSubtitle = paymentsSubtitle(unpaidBills.size, awaitingVerification.size),
-                        paymentsUrgent = unpaidBills.any { it.status.equals("Urgent", true) },
-                        visitorsCount = pendingVisitors.size,
-                        visitorsSubtitle = pendingVisitors.firstOrNull()
-                            ?.let { "${it.name} • ${it.purpose}" },
-                        maintenanceCount = openMaintenance.size,
-                        maintenanceSubtitle = openMaintenance.firstOrNull()?.title,
-                        onPayments = { onNavigateTab(AppTab.Payments) },
-                        onVisitors = { openSub(SubScreen.ManagementDashboard) },
-                        onMaintenance = { openSub(SubScreen.MaintenanceRequest) }
-                    )
-                }
-            }
-
-            // A failed section is reported on Home too, so an outage is never
-            // presented as "all caught up".
-            if (homeError != null) {
-                item {
-                    NnInlineError(
-                        message = homeError.userMessage(),
-                        onRetry = { viewModel.refresh() },
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                    )
-                }
-            }
-
-            // --- Quick actions ---
             item {
-                NnSectionHeader(title = "Quick actions")
-            }
-            item {
-                NnQuickActionsRow(
-                    canFinance = canFinance,
-                    canMaintenance = canMaintenance,
-                    canVisitors = canVisitors,
-                    onPayDues = { onNavigateTab(AppTab.Payments) },
-                    onRaiseRequest = { openSub(SubScreen.MaintenanceRequest) },
-                    onManageVisitors = { openSub(SubScreen.ManagementDashboard) },
-                    onViewNotices = { onNavigateTab(AppTab.Community) }
+                NnFeaturedDuesCard(
+                    bill = unpaidBills.firstOrNull(),
+                    onViewAndPay = { onNavigateTab(AppTab.Payments) }
                 )
             }
 
-            // --- Happening in your community (scheduled notices carousel) ---
-            if (upcomingNotices.isNotEmpty()) {
-                item {
-                    NnSectionHeader(
-                        title = "Happening in your community",
-                        actionText = "See all",
-                        onActionClick = { onNavigateTab(AppTab.Community) }
-                    )
-                }
-                item {
-                    NnCommunityEvents(
-                        notices = upcomingNotices,
-                        onClick = { onNavigateTab(AppTab.Community) }
-                    )
-                }
+            item {
+                NnQuickAccessSection(
+                    onPayBills = { onNavigateTab(AppTab.Payments) },
+                    onRequest = { openSub(SubScreen.MaintenanceRequest) },
+                    onVisitors = { openSub(SubScreen.ManagementDashboard) },
+                    onAmenities = { onNavigateTab(AppTab.Community) }
+                )
             }
 
-            // --- Bubbly assistant entry point ---
             item {
-                NnBubblyEntry(
-                    expanded = bubblyExpanded,
-                    onExpandedChange = { bubblyExpanded = it },
-                    onRaiseRequest = { openSub(SubScreen.MaintenanceRequest) },
-                    onPayDues = { onNavigateTab(AppTab.Payments) },
-                    onViewNotices = { onNavigateTab(AppTab.Community) },
-                    modifier = Modifier.padding(top = 12.dp)
+                NnTodaysUpdatesSection(
+                    notices = upcomingNotices,
+                    onClick = { onNavigateTab(AppTab.Community) }
                 )
             }
         }
@@ -4656,11 +4957,12 @@ private fun PaymentsTab(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(16.dp),
+                            .padding(horizontal = 20.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surface
-                        )
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         Row(
                             modifier = Modifier
@@ -4669,17 +4971,35 @@ private fun PaymentsTab(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Column {
-                                Text(
-                                    text = "${payment.currency} ${payment.amount}",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Bill: ${payment.billId ?: "N/A"}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFF2F2F2)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Payments,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "${payment.currency} ${payment.amount}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontFamily = InterFontFamily,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Bill: ${payment.billId ?: "N/A"}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = InterFontFamily,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                             NnStatusBadge(
                                 text = payment.status,
@@ -4724,9 +5044,10 @@ private fun NnBillCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -4734,26 +5055,45 @@ private fun NnBillCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = bill.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Due ${bill.due}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = bill.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontFamily = InterFontFamily,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Due ${bill.due}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = InterFontFamily,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 Text(
                     text = bill.amount,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontFamily = InterFontFamily,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -4762,9 +5102,18 @@ private fun NnBillCard(
                 NnStatusBadge(text = bill.status, status = statusTypeFrom(bill.status))
                 Button(
                     onClick = onPay,
-                    enabled = !isSubmitting
+                    enabled = !isSubmitting,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
                 ) {
-                    Text("Pay")
+                    Text(
+                        text = "Pay Dues",
+                        fontFamily = InterFontFamily,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -4815,34 +5164,54 @@ private fun CommunityTab(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(16.dp),
+                            .padding(horizontal = 20.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surface
-                        )
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFF2F2F2)),
+                                contentAlignment = Alignment.Center
                             ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Notifications,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = notice.title,
                                     style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.weight(1f)
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold
                                 )
-                                NnStatusBadge(
-                                    text = notice.status,
-                                    status = statusTypeFrom(notice.status)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = notice.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = InterFontFamily,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = notice.message,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            NnStatusBadge(
+                                text = notice.status,
+                                status = statusTypeFrom(notice.status)
                             )
                         }
                     }
@@ -4866,28 +5235,45 @@ private fun CommunityTab(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(16.dp),
+                            .padding(horizontal = 20.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surface
-                        )
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFF2F2F2)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.ConfirmationNumber,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = ticket.title,
                                     style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontFamily = InterFontFamily,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Text(
                                     text = "${ticket.category} • ${ticket.priority} priority",
                                     style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = InterFontFamily,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
