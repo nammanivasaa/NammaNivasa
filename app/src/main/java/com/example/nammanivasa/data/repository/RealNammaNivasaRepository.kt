@@ -71,6 +71,8 @@ class RealNammaNivasaRepository(private val context: Context) : NammaNivasaRepos
                             email = data.email,
                             phone = data.phone,
                             status = data.status,
+                            buildingName = data.buildingName,
+                            flatNumber = data.flatNumber,
                             activeCommunities = data.activeCommunities.map { membership ->
                                 CommunityMembershipInfo(
                                     communityId = membership.communityId,
@@ -171,7 +173,10 @@ class RealNammaNivasaRepository(private val context: Context) : NammaNivasaRepos
                     streetAddress = request.streetAddress,
                     buildingName = request.buildingName,
                     floors = request.floors,
-                    flatNumber = request.flatNumber
+                    flatNumber = request.flatNumber,
+                    adminName = request.adminName,
+                    adminEmail = request.adminEmail,
+                    adminMobile = request.adminMobile
                 )
                 val response = apiService.createCommunity(apiReq)
                 if (response.isSuccessful && response.body()?.data != null) {

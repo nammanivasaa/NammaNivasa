@@ -24,7 +24,9 @@ data class MeResponse(
     @Json(name = "email") val email: String?,
     @Json(name = "phone") val phone: String?,
     @Json(name = "status") val status: String,
-    @Json(name = "activeCommunities") val activeCommunities: List<CommunityMembershipInfo>
+    @Json(name = "activeCommunities") val activeCommunities: List<CommunityMembershipInfo>,
+    @Json(name = "buildingName") val buildingName: String?,
+    @Json(name = "flatNumber") val flatNumber: String?
 )
 
 @JsonClass(generateAdapter = true)
@@ -257,7 +259,10 @@ data class CreateCommunityRequest(
     @Json(name = "streetAddress") val streetAddress: String,
     @Json(name = "buildingName") val buildingName: String? = null,
     @Json(name = "floors") val floors: Int? = null,
-    @Json(name = "flatNumber") val flatNumber: String? = null
+    @Json(name = "flatNumber") val flatNumber: String? = null,
+    @Json(name = "adminName") val adminName: String? = null,
+    @Json(name = "adminEmail") val adminEmail: String? = null,
+    @Json(name = "adminMobile") val adminMobile: String? = null
 )
 
 @JsonClass(generateAdapter = true)

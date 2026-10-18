@@ -144,6 +144,17 @@ async function resolveUserProfile(user: AuthenticatedUser) {
     throw new HttpError(404, 'NOT_FOUND', 'User profile not found.');
   }
 
+  const occupancyRes = await query<{ building_name: string; flat_number: string }>(
+    `SELECT b.name AS building_name, f.flat_number
+     FROM occupancy o
+     JOIN flats f ON f.id = o.flat_id
+     JOIN buildings b ON b.id = f.building_id
+     WHERE o.user_id = $1 AND o.status = 'ACTIVE'
+     LIMIT 1`,
+    [appUser.id]
+  );
+  const unit = occupancyRes.rows[0];
+
   const memberships = await listActiveUserCommunities(appUser.id);
   return {
     id: appUser.id,
@@ -151,6 +162,8 @@ async function resolveUserProfile(user: AuthenticatedUser) {
     email: appUser.email ?? undefined,
     phone: appUser.phone ?? undefined,
     status: appUser.status,
+    buildingName: unit?.building_name ?? undefined,
+    flatNumber: unit?.flat_number ?? undefined,
     activeCommunities: memberships.map((membership) => ({
       communityId: membership.communityId,
       membershipStatus: membership.membershipStatus,

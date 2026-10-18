@@ -2901,6 +2901,9 @@ private fun CreateCommunityStarterScreen(
                                         buildingName = adminFlat.ifBlank { "Tower A" },
                                         floors = floorsPerTower.toIntOrNull() ?: standaloneFloors.toIntOrNull() ?: builderFloors.toIntOrNull() ?: 10,
                                         flatNumber = adminFlat.ifBlank { "A-101" },
+                                        adminName = "$adminFirstName $adminLastName".trim().ifBlank { "Community Admin" },
+                                        adminEmail = signedInEmail.ifBlank { "admin@nammanivasa.com" },
+                                        adminMobile = adminMobile.ifBlank { null },
                                         onSuccess = { onCreated() }
                                     )
                                 } else {
@@ -5369,16 +5372,28 @@ private fun MoreTab(
                     Column {
                         Text(
                             text = uiState.userProfile?.fullName ?: "Guest",
-                            style = MaterialTheme.typography.titleSmall,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontFamily = InterFontFamily,
                             fontWeight = FontWeight.Bold
                         )
-                        Text(
-                            text = uiState.userProfile?.email
-                                ?: uiState.userProfile?.phone
-                                ?: "Signed in",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        if (!uiState.userProfile?.email.isNullOrBlank()) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = uiState.userProfile!!.email!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = InterFontFamily,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (!uiState.userProfile?.phone.isNullOrBlank()) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = uiState.userProfile!!.phone!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = InterFontFamily,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }

@@ -365,6 +365,11 @@ export async function createCommunity(
         ]
       );
       effectiveUserId = newUser.rows[0].id;
+    } else {
+      await client.query(
+        `UPDATE users SET phone = COALESCE($1, phone), full_name = COALESCE($2, full_name) WHERE id = $3`,
+        [input.adminMobile, input.adminName, effectiveUserId]
+      );
     }
 
     // 1. Insert community

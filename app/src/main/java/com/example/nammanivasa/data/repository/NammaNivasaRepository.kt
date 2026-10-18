@@ -80,7 +80,10 @@ data class RepoCreateCommunityRequest(
     val streetAddress: String,
     val buildingName: String? = null,
     val floors: Int? = null,
-    val flatNumber: String? = null
+    val flatNumber: String? = null,
+    val adminName: String? = null,
+    val adminEmail: String? = null,
+    val adminMobile: String? = null
 )
 
 data class CreatedCommunityResult(

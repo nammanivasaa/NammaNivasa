@@ -195,6 +195,9 @@ class SocietyViewModel(
         buildingName: String? = null,
         floors: Int? = null,
         flatNumber: String? = null,
+        adminName: String? = null,
+        adminEmail: String? = null,
+        adminMobile: String? = null,
         onSuccess: () -> Unit
     ) {
         viewModelScope.launch {
@@ -210,7 +213,10 @@ class SocietyViewModel(
                     streetAddress = streetAddress,
                     buildingName = buildingName,
                     floors = floors,
-                    flatNumber = flatNumber
+                    flatNumber = flatNumber,
+                    adminName = adminName,
+                    adminEmail = adminEmail,
+                    adminMobile = adminMobile
                 )
             )
             if (result != null) {
